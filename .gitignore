@@ -1,3 +1,4 @@
+
 # Python cache
 __pycache__/
 *.pyc
@@ -14,3 +15,37 @@ module3-background/static/background/enhanced/*
 
 # IDE
 .vscode/
+=======
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Database
+data/*.db
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Env
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Static uploads (keep dirs)
+static/matte/*.png
+static/background/*.png
+static/poster/*.png
+static/poster/uploads/*.png
+!static/**/.gitkeep
+

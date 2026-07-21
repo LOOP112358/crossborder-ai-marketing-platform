@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>海报合成模块前端测试页</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: #f4f6fb;
+            color: #222;
+        }
+
+        .container {
+            width: 1180px;
+            margin: 30px auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .panel {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+        }
+
+        .row {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }
+
+        .left {
+            width: 46%;
+        }
+
+        .right {
+            width: 54%;
+            position: sticky;
+            top: 20px;
+        }
+
+        label {
+            display: block;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        input,
+        select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            font-size: 15px;
+        }
+
+        input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        input[type="color"] {
+            height: 42px;
+            padding: 4px;
+        }
+
+        input[readonly] {
+            background: #f8f8f8;
+            color: #666;
+        }
+
+        button {
+            margin-top: 14px;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            background: #2e6bff;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1f56d8;
+        }
+
+        .btn-gray {
+            background: #666;
+        }
+
+        .btn-gray:hover {
+            background: #444;
+        }
+
+        .btn-orange {
+            background: #ff8a00;
+        }
+
+        .btn-orange:hover {
+            background: #d97600;
+        }
+
+        .btn-green {
+            background: #20a162;
+        }
+
+        .btn-green:hover {
+            background: #17824f;
+        }
+
+        .preview-box {
+            min-height: 500px;
+            border: 2px dashed #dcdfe6;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            overflow: hidden;
+            padding: 12px;
+        }
+
+        .preview-box img {
+            max-width: 100%;
+            max-height: 620px;
+            border-radius: 8px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #eee;
+            padding: 14px 0;
+            gap: 12px;
+        }
+
+        .history-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-title {
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .history-meta {
+            color: #666;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .history-actions a {
+            text-decoration: none;
+        }
+
+        .small-btn {
+            margin-top: 0;
+            padding: 7px 12px;
+            font-size: 13px;
+        }
+
+        .tips {
+            background: #eef4ff;
+            border-left: 4px solid #2e6bff;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .status {
+            margin-top: 12px;
+            color: #409eff;
+            font-weight: bold;
+            word-break: break-all;
+        }
+
+        .section-title {
+            margin-top: 24px;
+            padding-top: 18px;
+            border-top: 1px solid #eee;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .style-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .style-grid label {
+            margin-top: 8px;
+        }
+
+        .check-row {
+            margin-top: 14px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .check-row label {
+            margin: 0;
+            font-weight: normal;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .button-row button {
+            margin-top: 8px;
+        }
+
+        .small-note {
+            color: #777;
+            font-size: 13px;
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 1000px) {
+            .container {
+                width: 94%;
+            }
+
+            .row {
+                flex-direction: column;
+            }
+
+            .left,
+            .right {
+                width: 100%;
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>海报合成模块前端测试页</h1>
+    <div class="subtitle">成员4：海报合成 + 模板管理 + 多文字层 + 字体艺术字 + 历史记录 + 下载 + 收藏</div>
+
+    <div class="tips">
+        当前页面调用 FastAPI 后端接口，实现图片上传、模板选择、五个文字层配置、字体选择、艺术字设置、海报生成、历史记录查询、下载和收藏功能。
+    </div>
+
+    <div class="panel">
+        <h2>生成海报</h2>
+
+        <div class="row">
+            <div class="left">
+                <label>选择模板</label>
+                <select id="templateSelect"></select>
+
+                <div class="section-title">图片上传</div>
+
+                <label>商品图上传</label>
+                <input type="file" id="productFile" accept="image/*">
+                <button onclick="uploadProductImage()">上传商品图</button>
+
+                <label>商品图路径</label>
+                <input id="mattedUrl" value="/static/demo/product.png" readonly>
+
+                <label>背景图上传</label>
+                <input type="file" id="bgFile" accept="image/*">
+                <button onclick="uploadBgImage()">上传背景图</button>
+
+                <label>背景图路径</label>
+                <input id="bgUrl" value="/static/demo/background.png" readonly>
+
+                <div class="section-title">文案内容</div>
+
+                <label>主标题</label>
+                <input id="title" value="Portable Blender">
+
+                <label>副标题 / 核心卖点</label>
+                <input id="subtitle" value="Blend Anywhere, Anytime">
+
+                <label>卖点1</label>
+                <input id="sellingPoint1" value="USB Rechargeable">
+
+                <label>卖点2</label>
+                <input id="sellingPoint2" value="Easy to Clean">
+
+                <label>按钮文案 / 行动号召</label>
+                <input id="ctaText" value="Shop Now">
+
+                <div class="section-title">文字样式设置</div>
+                <div class="small-note">
+                    每个文字层都可以独立设置颜色、字体、艺术字、坐标和字号。位置不填时使用系统默认位置。
+                </div>
+
+                <label>主标题颜色</label>
+                <input type="color" id="titleColor" value="#111111">
+
+                <label>主标题字体</label>
+                <select id="titleFontName">
+                    <option value="msyh">微软雅黑</option>
+                    <option value="simhei">黑体</option>
+                    <option value="simsun">宋体</option>
+                    <option value="kaiti">楷体</option>
+                    <option value="arial">Arial</option>
+                    <option value="impact">Impact</option>
+                </select>
+
+                <label>主标题艺术字</label>
+                <select id="titleArtStyle">
+                    <option value="normal">普通</option>
+                    <option value="stroke">描边</option>
+                    <option value="shadow">阴影</option>
+                    <option value="stroke_shadow" selected>描边 + 阴影</option>
+                    <option value="glow">发光</option>
+                    <option value="strong">加粗</option>
+                </select>
+
+                <div class="style-grid">
+                    <div>
+                        <label>主标题 X 坐标</label>
+                        <input type="number" id="titleX" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>主标题 Y 坐标</label>
+                        <input type="number" id="titleY" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>主标题字号</label>
+                        <input type="number" id="titleFontSize" placeholder="默认">
+                    </div>
+                </div>
+
+                <label>副标题颜色</label>
+                <input type="color" id="subtitleColor" value="#D81B60">
+
+                <label>副标题字体</label>
+                <select id="subtitleFontName">
+                    <option value="msyh">微软雅黑</option>
+                    <option value="simhei">黑体</option>
+                    <option value="simsun">宋体</option>
+                    <option value="kaiti">楷体</option>
+                    <option value="arial">Arial</option>
+                    <option value="impact">Impact</option>
+                </select>
+
+                <label>副标题艺术字</label>
+                <select id="subtitleArtStyle">
+                    <option value="normal">普通</option>
+                    <option value="stroke">描边</option>
+                    <option value="shadow">阴影</option>
+                    <option value="stroke_shadow" selected>描边 + 阴影</option>
+                    <option value="glow">发光</option>
+                    <option value="strong">加粗</option>
+                </select>
+
+                <div class="style-grid">
+                    <div>
+                        <label>副标题 X 坐标</label>
+                        <input type="number" id="subtitleX" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>副标题 Y 坐标</label>
+                        <input type="number" id="subtitleY" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>副标题字号</label>
+                        <input type="number" id="subtitleFontSize" placeholder="默认">
+                    </div>
+                </div>
+
+                <label>卖点1颜色</label>
+                <input type="color" id="sellingPoint1Color" value="#111111">
+
+                <label>卖点1字体</label>
+                <select id="sellingPoint1FontName">
+                    <option value="msyh">微软雅黑</option>
+                    <option value="simhei">黑体</option>
+                    <option value="simsun">宋体</option>
+                    <option value="kaiti">楷体</option>
+                    <option value="arial">Arial</option>
+                    <option value="impact">Impact</option>
+                </select>
+
+                <label>卖点1艺术字</label>
+                <select id="sellingPoint1ArtStyle">
+                    <option value="normal">普通</option>
+                    <option value="stroke">描边</option>
+                    <option value="shadow" selected>阴影</option>
+                    <option value="stroke_shadow">描边 + 阴影</option>
+                    <option value="glow">发光</option>
+                    <option value="strong">加粗</option>
+                </select>
+
+                <div class="style-grid">
+                    <div>
+                        <label>卖点1 X 坐标</label>
+                        <input type="number" id="sellingPoint1X" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>卖点1 Y 坐标</label>
+                        <input type="number" id="sellingPoint1Y" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>卖点1字号</label>
+                        <input type="number" id="sellingPoint1FontSize" placeholder="默认">
+                    </div>
+                </div>
+
+                <label>卖点2颜色</label>
+                <input type="color" id="sellingPoint2Color" value="#111111">
+
+                <label>卖点2字体</label>
+                <select id="sellingPoint2FontName">
+                    <option value="msyh">微软雅黑</option>
+                    <option value="simhei">黑体</option>
+                    <option value="simsun">宋体</option>
+                    <option value="kaiti">楷体</option>
+                    <option value="arial">Arial</option>
+                    <option value="impact">Impact</option>
+                </select>
+
+                <label>卖点2艺术字</label>
+                <select id="sellingPoint2ArtStyle">
+                    <option value="normal">普通</option>
+                    <option value="stroke">描边</option>
+                    <option value="shadow" selected>阴影</option>
+                    <option value="stroke_shadow">描边 + 阴影</option>
+                    <option value="glow">发光</option>
+                    <option value="strong">加粗</option>
+                </select>
+
+                <div class="style-grid">
+                    <div>
+                        <label>卖点2 X 坐标</label>
+                        <input type="number" id="sellingPoint2X" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>卖点2 Y 坐标</label>
+                        <input type="number" id="sellingPoint2Y" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>卖点2字号</label>
+                        <input type="number" id="sellingPoint2FontSize" placeholder="默认">
+                    </div>
+                </div>
+
+                <label>按钮文案颜色</label>
+                <input type="color" id="ctaTextColor" value="#FFFFFF">
+
+                <label>按钮背景颜色</label>
+                <input type="color" id="ctaButtonColor" value="#111111">
+
+                <label>按钮字体</label>
+                <select id="ctaTextFontName">
+                    <option value="msyh">微软雅黑</option>
+                    <option value="simhei">黑体</option>
+                    <option value="simsun">宋体</option>
+                    <option value="kaiti">楷体</option>
+                    <option value="arial">Arial</option>
+                    <option value="impact">Impact</option>
+                </select>
+
+                <label>按钮艺术字</label>
+                <select id="ctaTextArtStyle">
+                    <option value="normal" selected>普通</option>
+                    <option value="shadow">阴影</option>
+                    <option value="stroke_shadow">描边 + 阴影</option>
+                    <option value="strong">加粗</option>
+                </select>
+
+                <div class="style-grid">
+                    <div>
+                        <label>按钮 X 坐标</label>
+                        <input type="number" id="ctaTextX" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>按钮 Y 坐标</label>
+                        <input type="number" id="ctaTextY" placeholder="默认">
+                    </div>
+                    <div>
+                        <label>按钮字号</label>
+                        <input type="number" id="ctaTextFontSize" placeholder="默认">
+                    </div>
+                </div>
+
+                <label>文字描边颜色</label>
+                <input type="color" id="textStrokeColor" value="#FFFFFF">
+
+                <label>文字描边粗细</label>
+                <input type="number" id="textStrokeWidth" value="2" min="0" max="10">
+
+                <div class="check-row">
+                    <label>
+                        <input type="checkbox" id="textStrokeEnabled" checked>
+                        开启文字描边
+                    </label>
+
+                    <label>
+                        <input type="checkbox" id="textShadowEnabled" checked>
+                        开启文字阴影
+                    </label>
+                </div>
+
+                <div class="button-row">
+                    <button onclick="composePoster()">生成海报</button>
+                    <button class="btn-gray" onclick="fillChineseDemo()">填入中文示例</button>
+                    <button class="btn-green" onclick="useWhiteBgStyle()">白底推荐样式</button>
+                    <button class="btn-gray" onclick="resetStyle()">恢复默认样式</button>
+                </div>
+
+                <div id="status" class="status"></div>
+            </div>
+
+            <div class="right">
+                <h3>生成结果预览</h3>
+                <div class="preview-box" id="previewBox">
+                    暂无生成结果
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>历史记录</h2>
+        <button onclick="loadHistory()">刷新历史记录</button>
+        <button class="btn-orange" onclick="loadFavorites()">查看收藏列表</button>
+        <div id="historyList"></div>
+    </div>
+</div>
+
+<script>
+    const API_BASE = "";
+
+    function getOptionalNumber(id) {
+        const value = document.getElementById(id).value;
+        return value === "" ? null : Number(value);
+    }
+
+    async function uploadImage(fileInputId, targetInputId, imageType) {
+        const fileInput = document.getElementById(fileInputId);
+        const status = document.getElementById("status");
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert("请先选择一张图片");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+
+        status.textContent = imageType + "正在上传...";
+
+        try {
+            const res = await fetch(API_BASE + "/api/upload/image", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                status.textContent = imageType + "上传失败：" + JSON.stringify(data);
+                return;
+            }
+
+            document.getElementById(targetInputId).value = data.url;
+            status.textContent = imageType + "上传成功：" + data.url;
+
+        } catch (err) {
+            status.textContent = imageType + "上传请求失败：" + err;
+        }
+    }
+
+    async function uploadProductImage() {
+        await uploadImage("productFile", "mattedUrl", "商品图");
+    }
+
+    async function uploadBgImage() {
+        await uploadImage("bgFile", "bgUrl", "背景图");
+    }
+
+    async function loadTemplates() {
+        const res = await fetch(API_BASE + "/api/templates");
+        const data = await res.json();
+
+        const select = document.getElementById("templateSelect");
+        select.innerHTML = "";
+
+        data.forEach(item => {
+            const option = document.createElement("option");
+            option.value = item.id;
+            option.textContent = `${item.id} - ${item.name}（使用 ${item.usage_count} 次）`;
+            select.appendChild(option);
+        });
+    }
+
+    async function composePoster() {
+        const status = document.getElementById("status");
+        status.textContent = "正在生成海报...";
+
+        const body = {
+            user_id: 1,
+            matted_url: document.getElementById("mattedUrl").value,
+            bg_url: document.getElementById("bgUrl").value,
+            template_id: Number(document.getElementById("templateSelect").value),
+
+            title: document.getElementById("title").value,
+            subtitle: document.getElementById("subtitle").value,
+            selling_point_1: document.getElementById("sellingPoint1").value,
+            selling_point_2: document.getElementById("sellingPoint2").value,
+            cta_text: document.getElementById("ctaText").value,
+
+            discount: document.getElementById("subtitle").value,
+            price: document.getElementById("ctaText").value,
+
+            ratio: "1:1",
+
+            title_x: getOptionalNumber("titleX"),
+            title_y: getOptionalNumber("titleY"),
+            title_font_size: getOptionalNumber("titleFontSize"),
+            title_color: document.getElementById("titleColor").value,
+            title_font_name: document.getElementById("titleFontName").value,
+            title_art_style: document.getElementById("titleArtStyle").value,
+
+            subtitle_x: getOptionalNumber("subtitleX"),
+            subtitle_y: getOptionalNumber("subtitleY"),
+            subtitle_font_size: getOptionalNumber("subtitleFontSize"),
+            subtitle_color: document.getElementById("subtitleColor").value,
+            subtitle_font_name: document.getElementById("subtitleFontName").value,
+            subtitle_art_style: document.getElementById("subtitleArtStyle").value,
+
+            selling_point_1_x: getOptionalNumber("sellingPoint1X"),
+            selling_point_1_y: getOptionalNumber("sellingPoint1Y"),
+            selling_point_1_font_size: getOptionalNumber("sellingPoint1FontSize"),
+            selling_point_1_color: document.getElementById("sellingPoint1Color").value,
+            selling_point_1_font_name: document.getElementById("sellingPoint1FontName").value,
+            selling_point_1_art_style: document.getElementById("sellingPoint1ArtStyle").value,
+
+            selling_point_2_x: getOptionalNumber("sellingPoint2X"),
+            selling_point_2_y: getOptionalNumber("sellingPoint2Y"),
+            selling_point_2_font_size: getOptionalNumber("sellingPoint2FontSize"),
+            selling_point_2_color: document.getElementById("sellingPoint2Color").value,
+            selling_point_2_font_name: document.getElementById("sellingPoint2FontName").value,
+            selling_point_2_art_style: document.getElementById("sellingPoint2ArtStyle").value,
+
+            cta_text_x: getOptionalNumber("ctaTextX"),
+            cta_text_y: getOptionalNumber("ctaTextY"),
+            cta_text_font_size: getOptionalNumber("ctaTextFontSize"),
+            cta_text_color: document.getElementById("ctaTextColor").value,
+            cta_text_font_name: document.getElementById("ctaTextFontName").value,
+            cta_text_art_style: document.getElementById("ctaTextArtStyle").value,
+            cta_button_color: document.getElementById("ctaButtonColor").value,
+
+            text_stroke_enabled: document.getElementById("textStrokeEnabled").checked,
+            text_stroke_color: document.getElementById("textStrokeColor").value,
+            text_stroke_width: Number(document.getElementById("textStrokeWidth").value || 2),
+            text_shadow_enabled: document.getElementById("textShadowEnabled").checked
+        };
+
+        try {
+            const res = await fetch(API_BASE + "/api/poster/compose", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                status.textContent = "生成失败：" + JSON.stringify(data);
+                return;
+            }
+
+            status.textContent = "海报生成成功！";
+
+            const previewBox = document.getElementById("previewBox");
+            previewBox.innerHTML = `<img src="${data.poster_url}" alt="生成海报">`;
+
+            await loadTemplates();
+            await loadHistory();
+
+        } catch (err) {
+            status.textContent = "请求失败：" + err;
+        }
+    }
+
+    async function loadHistory() {
+        const res = await fetch(API_BASE + "/api/poster/history?user_id=1");
+        const data = await res.json();
+
+        renderHistory(data, "历史记录");
+    }
+
+    async function loadFavorites() {
+        const res = await fetch(API_BASE + "/api/poster/favorites?user_id=1");
+        const data = await res.json();
+
+        renderHistory(data, "收藏列表");
+    }
+
+    function renderHistory(data, titleText) {
+        const list = document.getElementById("historyList");
+        list.innerHTML = `<h3>${titleText}</h3>`;
+
+        if (!data || data.length === 0) {
+            list.innerHTML += "<p>暂无数据</p>";
+            return;
+        }
+
+        data.forEach(item => {
+            const posterId = item.poster_id || item.id;
+
+            const div = document.createElement("div");
+            div.className = "history-item";
+
+            div.innerHTML = `
+                <div class="history-info">
+                    <div class="history-title">${item.title || "未命名海报"}</div>
+                    <div class="history-meta">
+                        副标题：${item.subtitle || item.discount || "-"} |
+                        卖点/按钮：${item.selling_point_summary || item.price || "-"} |
+                        下载次数：${item.downloads || 0} |
+                        时间：${item.created_at || "-"}
+                    </div>
+                    <div class="history-meta">
+                        地址：${item.poster_url}
+                    </div>
+                </div>
+
+                <div class="history-actions">
+                    <button class="small-btn" onclick="previewPoster('${item.poster_url}')">预览</button>
+                    <a href="/api/poster/download/${posterId}" target="_blank">
+                        <button class="small-btn">下载</button>
+                    </a>
+                    <button class="small-btn btn-orange" onclick="toggleFavorite(${posterId})">收藏/取消</button>
+                </div>
+            `;
+
+            list.appendChild(div);
+        });
+    }
+
+    function previewPoster(url) {
+        const previewBox = document.getElementById("previewBox");
+        previewBox.innerHTML = `<img src="${url}" alt="生成海报">`;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function toggleFavorite(posterId) {
+        const res = await fetch(API_BASE + `/api/poster/favorite/${posterId}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                user_id: 1
+            })
+        });
+
+        const data = await res.json();
+        alert(data.message);
+        await loadHistory();
+    }
+
+    function fillChineseDemo() {
+        document.getElementById("title").value = "便携式榨汁杯";
+        document.getElementById("subtitle").value = "户外旅行随身带";
+        document.getElementById("sellingPoint1").value = "无线充电";
+        document.getElementById("sellingPoint2").value = "清洗方便";
+        document.getElementById("ctaText").value = "立即购买";
+    }
+
+    function useWhiteBgStyle() {
+        document.getElementById("titleColor").value = "#111111";
+        document.getElementById("subtitleColor").value = "#D81B60";
+        document.getElementById("sellingPoint1Color").value = "#111111";
+        document.getElementById("sellingPoint2Color").value = "#111111";
+        document.getElementById("ctaTextColor").value = "#FFFFFF";
+        document.getElementById("ctaButtonColor").value = "#111111";
+        document.getElementById("textStrokeColor").value = "#FFFFFF";
+        document.getElementById("textStrokeWidth").value = 2;
+
+        document.getElementById("titleFontName").value = "msyh";
+        document.getElementById("subtitleFontName").value = "msyh";
+        document.getElementById("sellingPoint1FontName").value = "msyh";
+        document.getElementById("sellingPoint2FontName").value = "msyh";
+        document.getElementById("ctaTextFontName").value = "msyh";
+
+        document.getElementById("titleArtStyle").value = "stroke_shadow";
+        document.getElementById("subtitleArtStyle").value = "stroke_shadow";
+        document.getElementById("sellingPoint1ArtStyle").value = "shadow";
+        document.getElementById("sellingPoint2ArtStyle").value = "shadow";
+        document.getElementById("ctaTextArtStyle").value = "normal";
+
+        document.getElementById("textStrokeEnabled").checked = true;
+        document.getElementById("textShadowEnabled").checked = true;
+
+        if (document.getElementById("titleX").value === "") {
+            document.getElementById("titleX").value = 80;
+        }
+        if (document.getElementById("titleY").value === "") {
+            document.getElementById("titleY").value = 80;
+        }
+        if (document.getElementById("titleFontSize").value === "") {
+            document.getElementById("titleFontSize").value = 64;
+        }
+    }
+
+    function resetStyle() {
+        document.getElementById("titleColor").value = "#111111";
+        document.getElementById("subtitleColor").value = "#D81B60";
+        document.getElementById("sellingPoint1Color").value = "#111111";
+        document.getElementById("sellingPoint2Color").value = "#111111";
+        document.getElementById("ctaTextColor").value = "#FFFFFF";
+        document.getElementById("ctaButtonColor").value = "#111111";
+        document.getElementById("textStrokeColor").value = "#FFFFFF";
+        document.getElementById("textStrokeWidth").value = 2;
+
+        document.getElementById("titleFontName").value = "msyh";
+        document.getElementById("subtitleFontName").value = "msyh";
+        document.getElementById("sellingPoint1FontName").value = "msyh";
+        document.getElementById("sellingPoint2FontName").value = "msyh";
+        document.getElementById("ctaTextFontName").value = "msyh";
+
+        document.getElementById("titleArtStyle").value = "stroke_shadow";
+        document.getElementById("subtitleArtStyle").value = "stroke_shadow";
+        document.getElementById("sellingPoint1ArtStyle").value = "shadow";
+        document.getElementById("sellingPoint2ArtStyle").value = "shadow";
+        document.getElementById("ctaTextArtStyle").value = "normal";
+
+        document.getElementById("titleX").value = "";
+        document.getElementById("titleY").value = "";
+        document.getElementById("titleFontSize").value = "";
+
+        document.getElementById("subtitleX").value = "";
+        document.getElementById("subtitleY").value = "";
+        document.getElementById("subtitleFontSize").value = "";
+
+        document.getElementById("sellingPoint1X").value = "";
+        document.getElementById("sellingPoint1Y").value = "";
+        document.getElementById("sellingPoint1FontSize").value = "";
+
+        document.getElementById("sellingPoint2X").value = "";
+        document.getElementById("sellingPoint2Y").value = "";
+        document.getElementById("sellingPoint2FontSize").value = "";
+
+        document.getElementById("ctaTextX").value = "";
+        document.getElementById("ctaTextY").value = "";
+        document.getElementById("ctaTextFontSize").value = "";
+
+        document.getElementById("textStrokeEnabled").checked = true;
+        document.getElementById("textShadowEnabled").checked = true;
+    }
+
+    window.onload = async function () {
+        await loadTemplates();
+        await loadHistory();
+    };
+</script>
+</body>
+</html>
