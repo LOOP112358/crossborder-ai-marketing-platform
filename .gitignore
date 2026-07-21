@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Database
+*.db
+
+# Generated images
+module3-background/static/background/generated/*
+module3-background/static/background/enhanced/*
+
+# IDE
+.vscode/
