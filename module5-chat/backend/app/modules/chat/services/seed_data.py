@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.chat import User, AboProduct
-from .rag_service import build_global_abo_index
+from app.modules.chat.services.rag_service import build_global_abo_index
 
 
 SAMPLE_PRODUCTS = [
@@ -169,55 +169,40 @@ def _seed_demo_history(db: Session) -> None:
 
 
 def _import_abo_products(db: Session) -> int:
-    """尝试从 scripts/import_abo 导入，失败则用 sample。"""
+    """从本地 ABO listings 导入；失败则用示例商品。"""
     count = db.query(AboProduct).count()
     if count > 0:
         return count
 
     try:
-        from pathlib import Path
-        import sys
-        scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
-        if str(scripts_dir) not in sys.path:
-            sys.path.insert(0, str(scripts_dir))
-        from import_abo import import_abo_listings
+        from app.modules.chat.services.import_abo import import_abo_listings
+
         count = import_abo_listings(db)
-        if count == 0:
-            print("[seed] ABO 导入失败，使用示例数据")
-            for p in SAMPLE_PRODUCTS:
-                db.add(AboProduct(
-                    item_id=p["item_id"],
-                    item_name=p["item_name"],
-                    item_name_zh=p.get("item_name_zh"),
-                    brand=p.get("brand"),
-                    brand_zh=p.get("brand_zh"),
-                    product_type=p.get("product_type"),
-                    product_type_zh=p.get("product_type_zh"),
-                    bullet_points=p.get("bullet_points"),
-                    bullet_points_zh=p.get("bullet_points_zh"),
-                    material=p.get("material"),
-                    material_zh=p.get("material_zh"),
-                    color=p.get("color"),
-                    faq_text=_build_faq(p),
-                ))
-            db.commit()
-            return len(SAMPLE_PRODUCTS)
-        return count
+        if count > 0:
+            return count
+        print("[seed] ABO 导入为 0，使用示例数据")
     except Exception as e:
         print(f"[seed] ABO 导入异常: {e}，使用示例数据")
-        for p in SAMPLE_PRODUCTS:
-            db.add(AboProduct(
+
+    for p in SAMPLE_PRODUCTS:
+        db.add(
+            AboProduct(
                 item_id=p["item_id"],
                 item_name=p["item_name"],
+                item_name_zh=p.get("item_name_zh"),
                 brand=p.get("brand"),
+                brand_zh=p.get("brand_zh"),
                 product_type=p.get("product_type"),
                 bullet_points=p.get("bullet_points"),
+                bullet_points_zh=p.get("bullet_points_zh"),
                 material=p.get("material"),
+                material_zh=p.get("material_zh"),
                 color=p.get("color"),
                 faq_text=_build_faq(p),
-            ))
-        db.commit()
-        return len(SAMPLE_PRODUCTS)
+            )
+        )
+    db.commit()
+    return len(SAMPLE_PRODUCTS)
 
 
 def _rebuild_abo_index(db: Session) -> None:

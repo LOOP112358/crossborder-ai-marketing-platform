@@ -1,6 +1,6 @@
-"""模块5 智能客服 + 运营看板 Pydantic 模型"""
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
+
 from pydantic import BaseModel, Field
 
 
@@ -10,9 +10,10 @@ class SessionCreate(BaseModel):
 
 class SessionOut(BaseModel):
     id: int
+    user_id: int
     title: str
     doc_name: Optional[str] = None
-    created_at: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -30,7 +31,7 @@ class MessageOut(BaseModel):
     role: str
     content: str
     language: str
-    created_at: Optional[str] = None
+    created_at: datetime
     feedback: Optional[str] = None
 
     class Config:
@@ -38,14 +39,23 @@ class MessageOut(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    user_message: dict
-    assistant_message: dict
+    user_message: MessageOut
+    assistant_message: MessageOut
     sources: List[str] = []
 
 
 class FeedbackCreate(BaseModel):
     message_id: int
     feedback_type: str = Field(..., pattern="^(like|dislike)$")
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    message_id: int
+    feedback_type: str
+
+    class Config:
+        from_attributes = True
 
 
 class DashboardStats(BaseModel):
@@ -59,7 +69,7 @@ class DashboardStats(BaseModel):
 
 
 class TrendPoint(BaseModel):
-    stat_date: str
+    stat_date: date
     writing_calls: int
     matte_calls: int
     bg_calls: int

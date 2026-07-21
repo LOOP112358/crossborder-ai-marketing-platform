@@ -21,6 +21,9 @@ from app.modules.matte.router import router as matte_router
 # 模块3：背景生成 + 超分（待开发）
 # from app.modules.background.router import router as background_router
 
+# 模块3：背景生成 + 超分
+from app.modules.background.router import router as background_router
+
 # 模块4：海报合成 + 模板管理
 from app.modules.poster.router import router as poster_router
 
@@ -45,18 +48,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静态文件 (shared/backend/app/main.py → 向上4级到项目根)
+# 静态文件：先挂 ABO 图片（更具体路径），再挂通用 /static
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 static_dir = os.path.join(ROOT, "static")
 os.makedirs(os.path.join(static_dir, "matte"), exist_ok=True)
 os.makedirs(os.path.join(static_dir, "background"), exist_ok=True)
 os.makedirs(os.path.join(static_dir, "poster"), exist_ok=True)
+
+try:
+    from app.modules.chat.services.config import ABO_IMAGES_DIR
+
+    if ABO_IMAGES_DIR.exists():
+        app.mount(
+            "/static/abo-images",
+            StaticFiles(directory=str(ABO_IMAGES_DIR)),
+            name="abo-images",
+        )
+        print(f"[startup] 已挂载 ABO 图片目录: {ABO_IMAGES_DIR}")
+except Exception as e:
+    print(f"[startup] ABO 图片目录未挂载: {e}")
+
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # 路由注册
 app.include_router(auth_router)
 app.include_router(writing_router)
 app.include_router(matte_router)
+app.include_router(background_router)
 app.include_router(poster_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)
@@ -67,11 +85,44 @@ def on_startup():
     init_db()
     from app.core.database import SessionLocal
     from app.modules.poster.services import init_templates
+
     db = SessionLocal()
     try:
         init_templates(db)
     finally:
         db.close()
+
+    # 模块5：接入本地 ABO 知识库（listings → SQLite + FAISS）
+    try:
+        from app.modules.chat.services.seed_data import seed_if_empty
+
+        seed_if_empty()
+    except Exception as e:
+        print(f"[startup] ABO 知识库初始化跳过: {e}")
+
+    # 提示：商品缺图时需手动回填（避免每次启动扫全量 listings）
+    try:
+        from app.core.database import SessionLocal
+        from app.models.chat import AboProduct
+        from sqlalchemy import or_
+
+        db = SessionLocal()
+        try:
+            missing = (
+                db.query(AboProduct)
+                .filter(or_(AboProduct.image_path.is_(None), AboProduct.image_path == ""))
+                .count()
+            )
+            total = db.query(AboProduct).count()
+            if total and missing:
+                print(
+                    f"[startup] 提示：{missing}/{total} 条商品尚无图片路径，"
+                    f"请运行: python scripts/import_abo_kb.py --backfill-images"
+                )
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[startup] ABO 图片状态检查跳过: {e}")
 
 
 @app.get("/api/health")

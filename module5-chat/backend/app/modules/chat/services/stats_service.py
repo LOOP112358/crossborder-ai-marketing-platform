@@ -22,11 +22,11 @@ def refresh_daily_stats(db: Session) -> SystemDailyStat:
     total_users = db.query(func.count(User.id)).scalar() or 0
 
     def count_table(table: str) -> int:
-        row = db.execute(
-            text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),
-            {"d": today.isoformat()},
-        ).scalar()
-        return int(row or 0)
+        try:
+            row = db.execute(text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),{"d": today.isoformat()}).scalar()
+            return int(row or 0)
+        except Exception:
+            return 0
 
     writing = count_table("history_writing")
     matte = count_table("history_matte")
@@ -84,19 +84,13 @@ def get_dashboard_stats(db: Session) -> Dict[str, Any]:
     if hot_from_matte:
         hot_categories = [{"name": r[0], "count": r[1]} for r in hot_from_matte]
     else:
-        hot_from_abo = db.execute(
-            text(
-                """
-                SELECT product_type AS name, COUNT(*) AS cnt
-                FROM abo_products
-                WHERE product_type IS NOT NULL AND product_type != ''
-                GROUP BY product_type
-                ORDER BY cnt DESC
-                LIMIT 10
-                """
-            )
-        ).fetchall()
-        hot_categories = [{"name": r[0], "count": r[1]} for r in hot_from_abo]
+        try:
+            hot_from_abo = db.execute(text(
+                "SELECT product_type AS name, COUNT(*) AS cnt FROM abo_products WHERE product_type IS NOT NULL AND product_type != '' GROUP BY product_type ORDER BY cnt DESC LIMIT 10"
+            )).fetchall()
+            hot_categories = [{"name": r[0], "count": r[1]} for r in hot_from_abo]
+        except Exception:
+            hot_categories = []
 
     # 异常预警：各模块错误率 > 10%
     error_alerts = []

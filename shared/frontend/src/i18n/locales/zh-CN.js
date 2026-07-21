@@ -1,6 +1,6 @@
 export default {
   common: {
-    appName: 'AI 电商营销工具平台',
+    appName: '跨境AI营销系统',
     login: '登录',
     register: '注册',
     logout: '退出登录',
@@ -68,6 +68,14 @@ export default {
   },
   writing: {
     title: '文案生成',
+    pickFromCatalog: '从商品库选择',
+    pickFromCatalogHint: '搜索 ABO 知识库商品，自动填入名称与卖点（仍可手动改）',
+    catalogSearchPlaceholder: '搜商品名 / 品牌 / 品类，如：手机壳、shoe、sofa',
+    catalogEmpty: '暂无匹配商品',
+    catalogSelected: '已选库内商品',
+    catalogTotal: '知识库共 {n} 条',
+    clearCatalog: '清除选品',
+    manualEdit: '手动填写',
     productName: '商品名称',
     productNamePlaceholder: '如：无线蓝牙耳机',
     productFeatures: '商品卖点/特点',

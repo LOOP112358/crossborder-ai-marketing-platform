@@ -1,18 +1,14 @@
 <template>
-  <el-container class="main-layout">
-    <!-- 侧边栏 -->
-    <el-aside width="220px" class="sidebar">
+  <el-container class="main-layout sketch-shell">
+    <el-aside width="232px" class="sidebar sketch-card">
       <div class="logo" @click="$router.push('/home')">
-        <el-icon :size="28"><Shop /></el-icon>
-        <span class="logo-text">{{ $t('common.appName') }}</span>
+        <span class="logo-mark">✦</span>
+        <div>
+          <div class="logo-text">跨境AI营销系统</div>
+          <div class="logo-sub">越境智绘 · Beyond Borders</div>
+        </div>
       </div>
-      <el-menu
-        :default-active="activeMenu"
-        router
-        background-color="#001529"
-        text-color="#ffffffb3"
-        active-text-color="#ffffff"
-      >
+      <el-menu :default-active="activeMenu" router>
         <el-menu-item index="/home">
           <el-icon><HomeFilled /></el-icon>
           <span>{{ $t('nav.home') }}</span>
@@ -21,17 +17,9 @@
           <el-icon><Edit /></el-icon>
           <span>{{ $t('nav.writing') }}</span>
         </el-menu-item>
-        <el-menu-item index="/matte">
-          <el-icon><Scissor /></el-icon>
-          <span>{{ $t('nav.matte') }}</span>
-        </el-menu-item>
-        <el-menu-item index="/background">
-          <el-icon><PictureFilled /></el-icon>
-          <span>{{ $t('nav.background') }}</span>
-        </el-menu-item>
-        <el-menu-item index="/poster">
+        <el-menu-item index="/poster-workflow">
           <el-icon><Postcard /></el-icon>
-          <span>{{ $t('nav.poster') }}</span>
+          <span>AI海报工作流</span>
         </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
@@ -44,14 +32,13 @@
       </el-menu>
     </el-aside>
 
-    <!-- 右侧区域 -->
     <el-container>
-      <el-header class="header">
+      <el-header class="header sketch-card">
         <div class="header-left">
-          <span class="page-title">{{ currentPageTitle }}</span>
+          <span class="page-title sketch-title">{{ currentPageTitle }}</span>
+          <span class="page-hint">越境智绘</span>
         </div>
         <div class="header-right">
-          <!-- 语言切换 -->
           <el-dropdown trigger="click" @command="handleLangChange">
             <span class="lang-switch">
               <el-icon><Switch /></el-icon>
@@ -59,19 +46,18 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="zh-CN">🇨🇳 {{ $t('lang.zhCN') }}</el-dropdown-item>
-                <el-dropdown-item command="en">🇺🇸 {{ $t('lang.en') }}</el-dropdown-item>
-                <el-dropdown-item command="ja">🇯🇵 {{ $t('lang.ja') }}</el-dropdown-item>
-                <el-dropdown-item command="ko">🇰🇷 {{ $t('lang.ko') }}</el-dropdown-item>
-                <el-dropdown-item command="es">🇪🇸 {{ $t('lang.es') }}</el-dropdown-item>
+                <el-dropdown-item command="zh-CN">{{ $t('lang.zhCN') }}</el-dropdown-item>
+                <el-dropdown-item command="en">{{ $t('lang.en') }}</el-dropdown-item>
+                <el-dropdown-item command="ja">{{ $t('lang.ja') }}</el-dropdown-item>
+                <el-dropdown-item command="ko">{{ $t('lang.ko') }}</el-dropdown-item>
+                <el-dropdown-item command="es">{{ $t('lang.es') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
 
-          <!-- 用户 -->
           <el-dropdown trigger="click">
             <span class="user-info">
-              <el-avatar :size="32" icon="UserFilled" />
+              <span class="avatar">{{ (authStore.user?.username || 'U').slice(0, 1).toUpperCase() }}</span>
               <span class="username">{{ authStore.user?.username || 'User' }}</span>
               <el-icon><ArrowDown /></el-icon>
             </span>
@@ -105,19 +91,27 @@ const router = useRouter()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  if (['/matte', '/background', '/poster', '/poster-workflow'].includes(route.path)) {
+    return '/poster-workflow'
+  }
+  return route.path
+})
 
 const currentPageTitle = computed(() => {
   const nameMap = {
     '/home': 'nav.home',
     '/writing': 'nav.writing',
-    '/matte': 'nav.matte',
-    '/background': 'nav.background',
-    '/poster': 'nav.poster',
+    '/poster-workflow': 'AI海报工作流',
+    '/matte': 'AI海报工作流',
+    '/background': 'AI海报工作流',
+    '/poster': 'AI海报工作流',
     '/chat': 'nav.chat',
+    '/dashboard': '运营看板',
   }
   const key = nameMap[route.path]
-  return key ? t(key) : t('common.home')
+  if (!key) return t('common.home')
+  return key.startsWith('nav.') ? t(key) : key
 })
 
 function handleLangChange(lang) {
@@ -140,66 +134,94 @@ function handleLogout() {
 <style scoped>
 .main-layout {
   height: 100vh;
+  padding: 14px;
+  gap: 14px;
+  background: transparent;
 }
 .sidebar {
-  background-color: #001529;
-  overflow-y: auto;
-  overflow-x: hidden;
+  height: calc(100vh - 28px);
+  padding-top: 8px;
+  overflow: auto;
 }
 .logo {
-  height: 60px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: #fff;
+  gap: 10px;
+  padding: 14px 16px 18px;
   cursor: pointer;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 2px dashed rgba(44, 58, 66, 0.2);
+  margin-bottom: 8px;
+}
+.logo-mark {
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--line);
+  border-radius: 40% 60% 45% 55% / 55% 40% 60% 45%;
+  display: grid;
+  place-items: center;
+  background: #fff7e8;
+  color: var(--accent-2);
+  font-size: 18px;
 }
 .logo-text {
-  font-size: 16px;
-  font-weight: bold;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 600;
 }
-.sidebar .el-menu {
-  border-right: none;
+.logo-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 4px;
 }
 .header {
-  background: #fff;
+  height: 64px !important;
+  margin: 0 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e8e8e8;
-  padding: 0 24px;
-  height: 60px;
+  padding: 0 18px;
 }
 .page-title {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 26px;
+  margin-right: 10px;
+  font-weight: 600;
+}
+.page-hint {
+  font-size: 12px;
+  color: var(--accent);
+  border-bottom: 2px solid rgba(47, 111, 106, 0.35);
 }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
 }
-.lang-switch {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  color: #606266;
-  font-size: 13px;
-}
-.lang-switch:hover {
-  color: #409eff;
-}
+.lang-switch,
 .user-info {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  color: var(--ink-soft);
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--line);
+  border-radius: 40% 60% 55% 45%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 700;
 }
 .content {
-  background: #f0f2f5;
-  min-height: calc(100vh - 60px);
+  padding: 0 !important;
+  min-height: calc(100vh - 120px);
+}
+@media (max-width: 900px) {
+  .main-layout { display: block; padding: 10px; }
+  .sidebar { width: 100% !important; height: auto; margin-bottom: 12px; }
 }
 </style>

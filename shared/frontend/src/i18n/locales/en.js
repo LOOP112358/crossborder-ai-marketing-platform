@@ -1,6 +1,6 @@
 export default {
   common: {
-    appName: 'AI E-commerce Marketing Platform',
+    appName: 'Cross-border AI Marketing System',
     login: 'Login',
     register: 'Register',
     logout: 'Logout',
@@ -68,6 +68,14 @@ export default {
   },
   writing: {
     title: 'AI Copywriting',
+    pickFromCatalog: 'Pick from catalog',
+    pickFromCatalogHint: 'Search ABO products to autofill name & features (still editable)',
+    catalogSearchPlaceholder: 'Search name / brand / type, e.g. phone case, shoe, sofa',
+    catalogEmpty: 'No matching products',
+    catalogSelected: 'Catalog product selected',
+    catalogTotal: '{n} products in catalog',
+    clearCatalog: 'Clear selection',
+    manualEdit: 'Manual entry',
     productName: 'Product Name',
     productNamePlaceholder: 'e.g. Wireless Bluetooth Earbuds',
     productFeatures: 'Selling Points / Features',

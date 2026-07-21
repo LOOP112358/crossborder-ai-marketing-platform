@@ -1,0 +1,126 @@
+/* 简约艺术手绘风 —— 全局主题（避免紫渐变/奶油衬线模板） */
+:root {
+  --ink: #243038;
+  --ink-soft: #4a5a63;
+  --paper: #eef3f0;
+  --paper-deep: #e2ebe5;
+  --wash: #d7e8df;
+  --accent: #2f6f6a;
+  --accent-2: #c45c26;
+  --line: #2c3a42;
+  --good: #3d7a52;
+  --warn: #b7791f;
+  --card: rgba(255, 255, 255, 0.72);
+  --shadow: 3px 4px 0 rgba(36, 48, 56, 0.12);
+  --font-display: "LXGW WenKai", "ZCOOL KuaiLe", "Noto Sans SC", "PingFang SC", sans-serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(47, 111, 106, 0.08), transparent 28%),
+    radial-gradient(circle at 88% 8%, rgba(196, 92, 38, 0.08), transparent 24%),
+    linear-gradient(180deg, var(--paper) 0%, var(--paper-deep) 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(36, 48, 56, 0.035) 28px),
+    repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(36, 48, 56, 0.025) 28px);
+  z-index: 0;
+}
+
+#app { position: relative; z-index: 1; }
+
+h1, h2, h3, .sketch-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+/* 大标题稍加重，避免“飘” */
+h1, .sketch-title {
+  font-weight: 600;
+}
+
+.sketch-card {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 18px 22px 16px 20px / 20px 16px 22px 18px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(4px);
+}
+
+.sketch-btn {
+  border: 2px solid var(--line) !important;
+  border-radius: 999px 14px 18px 12px / 16px 20px 12px 18px !important;
+  background: #fff !important;
+  color: var(--ink) !important;
+  box-shadow: 2px 3px 0 rgba(36, 48, 56, 0.15) !important;
+  font-family: var(--font-body) !important;
+}
+.sketch-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 4px 0 rgba(36, 48, 56, 0.18) !important;
+}
+.sketch-btn-primary {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: #1f4f4b !important;
+}
+
+/* Element Plus soft override inside sketch shell */
+.sketch-shell .el-card {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 18px 22px 16px 20px / 20px 16px 22px 18px;
+  box-shadow: var(--shadow);
+}
+.sketch-shell .el-card__header {
+  border-bottom: 2px dashed rgba(44, 58, 66, 0.25);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 16px;
+}
+.sketch-shell .el-button--primary {
+  --el-button-bg-color: var(--accent);
+  --el-button-border-color: #1f4f4b;
+  --el-button-hover-bg-color: #3a857f;
+  --el-button-hover-border-color: #1f4f4b;
+}
+.sketch-shell .el-menu {
+  border-right: none !important;
+  background: transparent !important;
+}
+.sketch-shell .el-menu-item {
+  border-radius: 14px 18px 12px 16px / 16px 12px 18px 14px;
+  margin: 4px 10px;
+  color: var(--ink-soft) !important;
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+.sketch-shell .el-menu-item.is-active {
+  background: rgba(47, 111, 106, 0.16) !important;
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+.sketch-shell .el-menu-item:hover {
+  background: rgba(47, 111, 106, 0.1) !important;
+}
+.sketch-shell .content {
+  background: transparent !important;
+}

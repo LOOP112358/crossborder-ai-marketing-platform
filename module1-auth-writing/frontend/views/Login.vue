@@ -1,8 +1,9 @@
 <template>
-  <div class="auth-container">
-    <div class="auth-card">
-      <h2 class="auth-title">{{ $t('common.appName') }}</h2>
-      <p class="auth-subtitle">{{ $t('login.title') }}</p>
+  <div class="auth-container sketch-shell">
+    <div class="auth-card sketch-card">
+      <div class="stamp">合</div>
+      <h2 class="auth-title sketch-title">{{ $t('common.appName') }}</h2>
+      <p class="auth-subtitle">{{ $t('login.title') }} · 越境智绘</p>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-form-item :label="$t('login.username')" prop="username">
           <el-input v-model="form.username" :placeholder="$t('login.usernamePlaceholder')" size="large" />
@@ -12,7 +13,7 @@
             show-password @keyup.enter="handleLogin" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" :loading="loading" block @click="handleLogin">
+          <el-button class="sketch-btn sketch-btn-primary" size="large" :loading="loading" style="width:100%" @click="handleLogin">
             {{ $t('login.loginBtn') }}
           </el-button>
         </el-form-item>
@@ -69,31 +70,46 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 24px;
 }
 .auth-card {
   width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 36px 32px;
+  position: relative;
+}
+.stamp {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 48px;
+  height: 48px;
+  border: 2px solid var(--accent-2);
+  border-radius: 50%;
+  color: var(--accent-2);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 24px;
+  transform: rotate(12deg);
+  opacity: 0.85;
 }
 .auth-title {
   text-align: center;
-  margin-bottom: 4px;
-  font-size: 22px;
-  color: #303133;
+  margin: 0 0 4px;
+  font-size: 34px;
 }
 .auth-subtitle {
   text-align: center;
-  margin-bottom: 24px;
-  color: #909399;
+  margin: 0 0 24px;
+  color: var(--ink-soft);
 }
 .auth-link {
   text-align: center;
-  color: #909399;
+  color: var(--ink-soft);
 }
 .auth-link a {
-  color: #409eff;
+  color: var(--accent);
+  margin-left: 4px;
+  border-bottom: 1.5px solid rgba(47, 111, 106, 0.35);
 }
 </style>

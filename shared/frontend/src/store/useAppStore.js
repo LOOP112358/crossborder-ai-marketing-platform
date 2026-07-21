@@ -3,9 +3,7 @@ import { ref } from 'vue'
 
 /**
  * 全局应用状态（成员2/3/4协作共享）
- * 成员2 设置 mattedUrl 和 category
- * 成员3 读取 category，设置 enhancedBgUrl
- * 成员4 读取 mattedUrl 和 enhancedBgUrl 进行海报合成
+ * 支持 ABO 商品库选品：图文一体带入海报工作流
  */
 export const useAppStore = defineStore('app', () => {
   // 成员2：抠图结果
@@ -13,6 +11,11 @@ export const useAppStore = defineStore('app', () => {
   const category = ref('')
   const categoryEn = ref('')
   const confidence = ref(0)
+
+  // ABO 选品
+  const selectedProductId = ref(null)
+  const selectedProduct = ref(null)
+  const productImageUrl = ref('')
 
   // 成员3：背景生成结果
   const enhancedBgUrl = ref('')
@@ -22,6 +25,10 @@ export const useAppStore = defineStore('app', () => {
   const posterConfig = ref({
     templateId: null,
     title: '',
+    subtitle: '',
+    selling_point_1: '',
+    selling_point_2: '',
+    cta_text: '',
     discount: '',
     price: '',
   })
@@ -31,6 +38,20 @@ export const useAppStore = defineStore('app', () => {
     category.value = cat
     categoryEn.value = catEn
     confidence.value = conf
+  }
+
+  function setSelectedProduct(product, posterCopy = null) {
+    selectedProduct.value = product
+    selectedProductId.value = product?.id ?? null
+    productImageUrl.value = product?.image_url || ''
+    if (product) {
+      category.value = product.category || category.value
+      categoryEn.value = product.category_en || product.product_type || categoryEn.value
+      // 注意：不把库内原图当作抠图结果；需先走 matte process-url
+    }
+    if (posterCopy) {
+      setPosterConfig(posterCopy)
+    }
   }
 
   function setBackgroundResult(url, style) {
@@ -44,8 +65,9 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     mattedUrl, category, categoryEn, confidence,
+    selectedProductId, selectedProduct, productImageUrl,
     enhancedBgUrl, bgStyle,
     posterConfig,
-    setMatteResult, setBackgroundResult, setPosterConfig,
+    setMatteResult, setSelectedProduct, setBackgroundResult, setPosterConfig,
   }
 })

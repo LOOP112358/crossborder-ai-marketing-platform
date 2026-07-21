@@ -3,63 +3,59 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/', redirect: '/home' },
 
-  // ─── 模块1：认证页面 ───────────────────────────────
   {
-    path: '/login', name: 'Login',
+    path: '/login',
+    name: 'Login',
     component: () => import('@m1/views/Login.vue'),
     meta: { requiresAuth: false },
   },
   {
-    path: '/register', name: 'Register',
+    path: '/register',
+    name: 'Register',
     component: () => import('@m1/views/Register.vue'),
     meta: { requiresAuth: false },
   },
 
-  // ─── 模块1：首页导航 ───────────────────────────────
   {
-    path: '/home', name: 'Home',
-    component: () => import('@m1/views/Home.vue'),
+    path: '/',
+    component: () => import('@/layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
-  },
-
-  // ─── 模块1：文案生成 ───────────────────────────────
-  {
-    path: '/writing', name: 'Writing',
-    component: () => import('@m1/views/writing/WritingPage.vue'),
-    meta: { requiresAuth: true, title: '文案生成' },
-  },
-
-  // ─── 模块2：商品抠图 ───────────────────────────────
-  {
-    path: '/matte', name: 'Matte',
-    component: () => import('@m2/views/matte/MattePage.vue'),
-    meta: { requiresAuth: true, title: '商品抠图' },
-  },
-
-  // ─── 模块3：背景生成（占位） ────────────────────────
-  {
-    path: '/background', name: 'Background',
-    component: () => import('@m3/views/background/Placeholder.vue'),
-    meta: { requiresAuth: true, title: '背景生成' },
-  },
-
-  // ─── 模块4：海报合成 ───────────────────────────────
-  {
-    path: '/poster', name: 'Poster',
-    component: () => import('@m4/views/poster/PosterPage.vue'),
-    meta: { requiresAuth: true, title: '海报合成' },
-  },
-
-  // ─── 模块5：智能客服 + 运营看板 ────────────────────
-  {
-    path: '/chat', name: 'Chat',
-    component: () => import('@m5/views/chat/ChatPage.vue'),
-    meta: { requiresAuth: true, title: '智能客服' },
-  },
-  {
-    path: '/dashboard', name: 'Dashboard',
-    component: () => import('@m5/views/chat/DashboardPage.vue'),
-    meta: { requiresAuth: true, title: '运营看板' },
+    children: [
+      {
+        path: 'home',
+        name: 'Home',
+        component: () => import('@m1/views/Home.vue'),
+        meta: { title: '首页' },
+      },
+      {
+        path: 'writing',
+        name: 'Writing',
+        component: () => import('@m1/views/writing/WritingPage.vue'),
+        meta: { title: '文案生成' },
+      },
+      {
+        path: 'poster-workflow',
+        name: 'PosterWorkflow',
+        component: () => import('@/views/PosterWorkflowPage.vue'),
+        meta: { title: 'AI海报工作流' },
+      },
+      // 旧路由兼容：跳到工作流对应步骤
+      { path: 'matte', redirect: { path: '/poster-workflow', query: { step: '0' } } },
+      { path: 'background', redirect: { path: '/poster-workflow', query: { step: '1' } } },
+      { path: 'poster', redirect: { path: '/poster-workflow', query: { step: '2' } } },
+      {
+        path: 'chat',
+        name: 'Chat',
+        component: () => import('@m5/views/chat/ChatPage.vue'),
+        meta: { title: '智能客服' },
+      },
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@m5/views/chat/DashboardPage.vue'),
+        meta: { title: '运营看板' },
+      },
+    ],
   },
 ]
 
@@ -70,7 +66,8 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
-  if (to.meta.requiresAuth !== false && !token) {
+  const needAuth = to.matched.some((r) => r.meta.requiresAuth)
+  if (needAuth && !token) {
     next('/login')
   } else if ((to.path === '/login' || to.path === '/register') && token) {
     next('/home')

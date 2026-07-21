@@ -53,3 +53,32 @@ class ModuleError(Base):
     module_name = Column(String(50), nullable=False)
     error_message = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class AboProduct(Base):
+    """ABO商品知识库"""
+    __tablename__ = "abo_products"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String(20), unique=True, nullable=False, index=True)
+    item_name = Column(Text)
+    item_name_zh = Column(Text)
+    brand = Column(Text)
+    brand_zh = Column(Text)
+    product_type = Column(String(200))
+    bullet_points = Column(Text)
+    bullet_points_zh = Column(Text)
+    material = Column(Text)
+    material_zh = Column(Text)
+    color = Column(Text)
+    main_image_id = Column(String(64), index=True)
+    image_path = Column(String(260))  # 相对 images/small 的路径，如 14/14fe8812.jpg
+    faq_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    @property
+    def image_url(self) -> str | None:
+        if not self.image_path:
+            return None
+        # 由 main.py 挂载 /static/abo-images → ABO_IMAGES_DIR
+        return f"/static/abo-images/images/small/{self.image_path.replace(chr(92), '/')}"
+

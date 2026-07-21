@@ -1,5 +1,5 @@
 <template>
-  <div class="writing-page">
+  <div class="writing-page sketch-shell">
     <!-- 左侧：输入表单 -->
     <div class="input-panel">
       <el-card shadow="never">
@@ -7,11 +7,45 @@
           <span class="panel-title"><el-icon><Edit /></el-icon> {{ $t('writing.title') }}</span>
         </template>
         <el-form :model="form" label-position="top" size="default">
+          <el-form-item :label="$t('writing.pickFromCatalog')">
+            <el-select
+              v-model="selectedProductId"
+              filterable
+              remote
+              clearable
+              :remote-method="remoteSearchProducts"
+              :loading="searchingProducts"
+              :placeholder="$t('writing.catalogSearchPlaceholder')"
+              style="width:100%"
+              @change="onProductPicked"
+              @clear="clearCatalogSelection"
+            >
+              <el-option
+                v-for="p in productOptions"
+                :key="p.id"
+                :label="p.label"
+                :value="p.id"
+              >
+                <div class="product-opt">
+                  <img v-if="p.image_url" :src="p.image_url" class="product-opt-thumb" alt="" />
+                  <div>
+                    <span class="product-opt-name">{{ p.name }}</span>
+                    <span class="product-opt-meta">{{ p.brand || p.category || p.product_type }}{{ p.has_image ? ' · 有图' : '' }}</span>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+            <p class="catalog-hint">{{ $t('writing.pickFromCatalogHint') }}</p>
+            <p v-if="catalogTotal != null" class="catalog-count">
+              {{ $t('writing.catalogTotal', { n: catalogTotal }) }}
+              <span v-if="withImage != null"> · 有图 {{ withImage }}</span>
+            </p>
+          </el-form-item>
           <el-form-item :label="$t('writing.productName')" required>
             <el-input v-model="form.product_name" :placeholder="$t('writing.productNamePlaceholder')" />
           </el-form-item>
           <el-form-item :label="$t('writing.productFeatures')">
-            <el-input v-model="form.product_features" type="textarea" :rows="3"
+            <el-input v-model="form.product_features" type="textarea" :rows="4"
               :placeholder="$t('writing.featuresPlaceholder')" />
           </el-form-item>
           <el-form-item :label="$t('writing.platform')">
@@ -31,7 +65,7 @@
             </el-select>
           </el-form-item>
 
-          <!-- 风格选择 — 增强版：6风格卡片 -->
+          <!-- 风格选择 — 手绘线稿图标 -->
           <el-form-item :label="$t('writing.style')">
             <div class="style-grid">
               <div
@@ -40,7 +74,7 @@
                 :class="{ active: form.style === s.value }"
                 @click="form.style = s.value"
               >
-                <span class="style-emoji">{{ s.emoji }}</span>
+                <span class="style-icon" v-html="STYLE_ICONS[s.value]" aria-hidden="true"></span>
                 <span class="style-name">{{ s.label }}</span>
                 <span class="style-desc">{{ s.desc }}</span>
               </div>
@@ -63,8 +97,7 @@
           <div class="result-header">
             <el-tag type="primary" size="large">{{ item.platform }}</el-tag>
             <el-tag size="small">{{ getLangName(item.language) }}</el-tag>
-            <el-tag size="small" :type="getStyleTagType(item.style)">
-              <span class="style-emoji-sm">{{ getStyleEmoji(item.style) }}</span>
+            <el-tag size="small" type="info">
               {{ getStyleName(item.style) }}
             </el-tag>
             <el-button size="small" text type="primary" @click="copyAll(item)">
@@ -139,9 +172,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { generateCopywriting, getWritingHistory } from '@/api/writing'
+import { generateCopywriting, getWritingHistory, searchWritingProducts } from '@/api/writing'
 import { ElMessage } from 'element-plus'
 
 const { t, locale } = useI18n()
@@ -156,30 +189,70 @@ const form = reactive({
   style: 'professional',
 })
 
-// 6种风格选项（响应式，随语言切换变化）
+const selectedProductId = ref(null)
+const productOptions = ref([])
+const searchingProducts = ref(false)
+const catalogTotal = ref(null)
+const withImage = ref(null)
+let searchTimer = null
+
+async function remoteSearchProducts(query) {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(async () => {
+    searchingProducts.value = true
+    try {
+      const data = await searchWritingProducts(query || '', 20, false, { diverse: !query })
+      productOptions.value = data.items || []
+      if (data.catalog_total != null) catalogTotal.value = data.catalog_total
+      if (data.with_image != null) withImage.value = data.with_image
+    } catch {
+      productOptions.value = []
+    } finally {
+      searchingProducts.value = false
+    }
+  }, 280)
+}
+
+function onProductPicked(id) {
+  if (!id) return
+  const p = productOptions.value.find((x) => x.id === id)
+  if (!p) return
+  form.product_name = p.name || p.item_name || ''
+  form.product_features = p.features || ''
+  ElMessage.success(t('writing.catalogSelected'))
+}
+
+function clearCatalogSelection() {
+  selectedProductId.value = null
+}
+
+onMounted(() => {
+  remoteSearchProducts('')
+})
+
+// 手绘线稿图标（青绿描边，与 sketch 主题一致）
+const STYLE_ICONS = {
+  professional: `<svg viewBox="0 0 48 48" fill="none"><path d="M10 18.2c8.5-.8 19.2-.6 28.2.4v18.6c-9.2.9-19.4.7-28.2-.3V18.2z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.5c2.2-5.2 7.4-7.8 14.1-7.6 6.4.2 11.2 2.9 13.9 7.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M21.5 18.2v3.8c0 1.6 1.2 2.6 2.7 2.6s2.6-1 2.6-2.6v-3.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 26.5h6.2M28 26.5h6.5M14 31.5h20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg>`,
+  casual: `<svg viewBox="0 0 48 48" fill="none"><path d="M24.2 38c-1.2-6.8-1.5-12.4-.4-17.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M23.8 22.2c-4.6-5.2-9.8-6.8-13.6-4.4-2.8 1.8-2.6 5.6.6 7.4 3.6 2.1 8.4.6 13-3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M24.6 20.8c4.2-4.8 9.4-6.2 13.1-3.6 2.6 1.9 2.2 5.5-.8 7.1-3.4 1.8-8.2.4-12.3-3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 36.5c3.8 1.4 8.2 1.5 12 .2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".7"/></svg>`,
+  minimalist: `<svg viewBox="0 0 48 48" fill="none"><rect x="14.5" y="14.5" width="19" height="19" rx="1.5" stroke="currentColor" stroke-width="1.7" transform="rotate(-2 24 24)"/><path d="M18 30.5h12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="24" cy="22.5" r="2.2" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  emotional: `<svg viewBox="0 0 48 48" fill="none"><path d="M24.1 36.5c-7.8-5.2-12.6-10.4-12.4-16.2.2-4.2 3.4-7 7.4-6.8 2.4.1 4.4 1.4 5.2 3.2.9-1.9 2.9-3.3 5.4-3.4 4.1-.2 7.2 2.8 7.2 7.1 0 5.7-5.2 10.8-12.8 16.1z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M17.5 22.8c1.2-1.8 3.1-2.6 4.8-2.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".65"/></svg>`,
+  humorous: `<svg viewBox="0 0 48 48" fill="none"><path d="M12.5 24.2c.4-7.2 5.6-12.4 11.8-12.6 6.4-.2 11.4 4.8 11.6 12.1.2 6.8-4.9 12.4-11.5 12.5-6.4.2-12.2-5-11.9-12z" stroke="currentColor" stroke-width="1.7"/><path d="M18.2 21.2c.6-1.4 1.7-2.2 2.9-2.1M27 21c.7-1.3 1.8-2 3-1.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17.8 27.2c2.2 3.4 5.2 5 6.6 5.1 1.5.1 4.4-1.6 6.4-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M33.5 14.5c1.6-2.2 3.8-3.2 5.6-2.6M36.2 17.8c1.8-.2 3.4.6 4.4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".8"/></svg>`,
+  luxury: `<svg viewBox="0 0 48 48" fill="none"><path d="M10.5 20.5l5.2-7.2 4.6 4.8L24 11.2l3.8 6.9 4.5-4.6 5.1 7.1-3.2 12.8H13.6L10.5 20.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14.2 33.8h19.6c.8 2.6-.2 4.4-3.2 4.6H17.2c-2.9-.1-3.9-2-3-4.6z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M21.5 23.2h5.2M24.1 20.5v5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg>`,
+}
+
 const styleOptions = computed(() => [
-  { value: 'professional', emoji: '💼', label: t('writing.styleProfessional'), desc: t('writing.styleDesc.professional') },
-  { value: 'casual',       emoji: '🌱', label: t('writing.styleCasual'),       desc: t('writing.styleDesc.casual') },
-  { value: 'minimalist',   emoji: '🤍', label: t('writing.styleMinimalist'),   desc: t('writing.styleDesc.minimalist') },
-  { value: 'emotional',    emoji: '💙', label: t('writing.styleEmotional'),    desc: t('writing.styleDesc.emotional') },
-  { value: 'humorous',     emoji: '😂', label: t('writing.styleHumorous'),     desc: t('writing.styleDesc.humorous') },
-  { value: 'luxury',       emoji: '👑', label: t('writing.styleLuxury'),       desc: t('writing.styleDesc.luxury') },
+  { value: 'professional', label: t('writing.styleProfessional'), desc: t('writing.styleDesc.professional') },
+  { value: 'casual',       label: t('writing.styleCasual'),       desc: t('writing.styleDesc.casual') },
+  { value: 'minimalist',   label: t('writing.styleMinimalist'),   desc: t('writing.styleDesc.minimalist') },
+  { value: 'emotional',    label: t('writing.styleEmotional'),    desc: t('writing.styleDesc.emotional') },
+  { value: 'humorous',     label: t('writing.styleHumorous'),     desc: t('writing.styleDesc.humorous') },
+  { value: 'luxury',       label: t('writing.styleLuxury'),       desc: t('writing.styleDesc.luxury') },
 ])
 
 const langNames = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어', es: 'Español' }
-const styleNames = {
-  professional: '💼', casual: '🌱', minimalist: '🤍',
-  emotional: '💙', humorous: '😂', luxury: '👑',
-}
-const styleTagType = {
-  professional: '', casual: 'success', minimalist: 'info',
-  emotional: 'warning', humorous: 'danger', luxury: 'warning',
-}
 
 function getLangName(lang) { return langNames[lang] || lang }
-function getStyleEmoji(style) { return styleNames[style] || '' }
 function getStyleName(style) { return t(`writing.style${style.charAt(0).toUpperCase() + style.slice(1)}`) }
-function getStyleTagType(style) { return styleTagType[style] || '' }
 
 async function handleGenerate() {
   if (!form.product_name.trim()) {
@@ -246,24 +319,61 @@ function reloadFromHistory(item) {
 .input-panel { width: 400px; flex-shrink: 0; }
 .result-panel { flex: 1; }
 .panel-title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.catalog-hint { margin: 6px 0 0; font-size: 12px; color: #909399; line-height: 1.4; }
+.catalog-count { margin: 4px 0 0; font-size: 12px; color: #67a090; }
+.product-opt { display: flex; flex-direction: row; align-items: center; gap: 8px; line-height: 1.35; max-width: 320px; }
+.product-opt-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; flex-shrink: 0; }
+.product-opt-name { display: block; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.product-opt-meta { display: block; font-size: 11px; color: #909399; }
 
-/* 风格卡片 */
-.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+/* 风格卡片 — 手绘感 */
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 .style-card {
-  border: 2px solid #e8e8e8;
-  border-radius: 8px;
-  padding: 10px;
+  border: 2px solid var(--line, #2c3a42);
+  border-radius: 14px 18px 12px 16px / 16px 12px 18px 14px;
+  padding: 12px 8px 10px;
   cursor: pointer;
   text-align: center;
-  transition: all 0.2s;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 2px 3px 0 rgba(36, 48, 56, 0.08);
+  color: var(--accent, #2f6f6a);
 }
-.style-card:hover { border-color: #409eff; background: #ecf5ff; }
-.style-card.active { border-color: #409eff; background: #ecf5ff; box-shadow: 0 0 0 2px rgba(64,158,255,.2); }
-.style-emoji { font-size: 24px; }
-.style-name { font-size: 13px; font-weight: 600; color: #303133; }
-.style-desc { font-size: 11px; color: #909399; line-height: 1.3; }
-.style-emoji-sm { margin-right: 2px; }
+.style-card:hover {
+  transform: translate(-1px, -1px);
+  background: var(--wash, #d7e8df);
+  box-shadow: 3px 4px 0 rgba(36, 48, 56, 0.12);
+}
+.style-card.active {
+  background: var(--wash, #d7e8df);
+  box-shadow: 3px 4px 0 rgba(47, 111, 106, 0.22);
+  color: var(--accent, #2f6f6a);
+}
+.style-icon {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 2px;
+}
+.style-icon :deep(svg) {
+  width: 100%;
+  height: 100%;
+}
+.style-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #243038);
+  font-family: var(--font-display, inherit);
+}
+.style-desc {
+  font-size: 11px;
+  color: var(--ink-soft, #4a5a63);
+  line-height: 1.35;
+}
 
 .result-card { margin-bottom: 16px; }
 .result-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

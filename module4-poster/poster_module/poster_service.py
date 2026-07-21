@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pathlib import Path
 from typing import Optional
 import uuid
@@ -39,11 +39,56 @@ def load_font(size: int, font_name: str = "msyh"):
 
 
 def url_to_path(url: str) -> Path:
-    if url.startswith("/static/"):
-        relative = url.replace("/static/", "")
+    """把 /static/... URL 解析为本地文件路径（兼容仓库根 static 与 ABO 挂载）。"""
+    raw = (url or "").strip()
+    if not raw:
+        return Path("")
+
+    as_path = Path(raw)
+    if as_path.is_file():
+        return as_path
+
+    # /static/abo-images/... → ABO 本地图片目录
+    if raw.startswith("/static/abo-images/"):
+        rel = raw[len("/static/abo-images/") :].lstrip("/").replace("\\", "/")
+        candidates = []
+        try:
+            from app.modules.chat.services.config import ABO_IMAGES_DIR
+
+            candidates.append(ABO_IMAGES_DIR / rel)
+        except Exception:
+            pass
+        candidates.append(Path(r"C:\Users\lishu\Downloads\abo-images-small") / rel)
+        for cand in candidates:
+            if cand.is_file():
+                return cand
+        return candidates[0] if candidates else Path(rel)
+
+    if raw.startswith("/static/"):
+        relative = raw[len("/static/") :].lstrip("/").replace("\\", "/")
+        # 仓库根 static（上传接口写这里）优先
+        repo_static = BASE_DIR.parent.parent / "static"
+        candidates = [
+            STATIC_DIR / relative,
+            repo_static / relative,
+            BASE_DIR / "static" / relative,
+            BASE_DIR.parent / "static" / relative,
+        ]
+        # 去重保序
+        seen = set()
+        uniq = []
+        for c in candidates:
+            key = str(c.resolve()) if c.parent.exists() else str(c)
+            if key not in seen:
+                seen.add(key)
+                uniq.append(c)
+        for cand in uniq:
+            if cand.is_file():
+                return cand
         return STATIC_DIR / relative
 
-    return Path(url)
+    return as_path
+
 
 
 def draw_text_with_art_style(
@@ -234,6 +279,79 @@ def get_default_layer_config(canvas_w: int, canvas_h: int):
     }
 
 
+
+def fit_rgba(image: Image.Image, box_w: int, box_h: int) -> Image.Image:
+    """等比缩放放入框内，透明填充，避免拉伸变形。"""
+    img = image.convert("RGBA")
+    iw, ih = img.size
+    if iw <= 0 or ih <= 0:
+        return Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+    scale = min(box_w / iw, box_h / ih)
+    nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))
+    resized = img.resize((nw, nh), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+    canvas.paste(resized, ((box_w - nw) // 2, (box_h - nh) // 2), resized)
+    return canvas
+
+
+def paste_product_with_shadow(
+    canvas: Image.Image,
+    product: Image.Image,
+    x: int,
+    y: int,
+    shadow: bool = True,
+) -> None:
+    if shadow:
+        alpha = product.split()[-1]
+        shadow_layer = Image.new("RGBA", product.size, (0, 0, 0, 0))
+        shadow_layer.putalpha(alpha.point(lambda a: int(a * 0.35)))
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(12))
+        canvas.alpha_composite(shadow_layer, (x + 10, y + 14))
+    canvas.alpha_composite(product, (x, y))
+
+
+def apply_template_overlays(canvas: Image.Image, overlays: list) -> Image.Image:
+    """根据模板 overlays 画半透明色块，提升设计感。"""
+    if not overlays:
+        return canvas
+    out = canvas.convert("RGBA")
+    w, h = out.size
+    for ov in overlays:
+        kind = ov.get("type", "rect")
+        color = ov.get("color", [0, 0, 0, 90])
+        if len(color) == 3:
+            color = list(color) + [120]
+        color = tuple(int(c) for c in color)
+        if kind == "top_band":
+            band_h = int(h * float(ov.get("ratio", 0.28)))
+            layer = Image.new("RGBA", (w, band_h), color)
+            out.alpha_composite(layer, (0, 0))
+        elif kind == "bottom_band":
+            band_h = int(h * float(ov.get("ratio", 0.22)))
+            layer = Image.new("RGBA", (w, band_h), color)
+            out.alpha_composite(layer, (0, h - band_h))
+        elif kind == "left_panel":
+            panel_w = int(w * float(ov.get("ratio", 0.42)))
+            layer = Image.new("RGBA", (panel_w, h), color)
+            out.alpha_composite(layer, (0, 0))
+        elif kind == "vignette":
+            vignette = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(vignette)
+            edge = int(min(w, h) * 0.08)
+            for i in range(edge):
+                a = int(70 * (1 - i / edge))
+                draw.rectangle([i, i, w - 1 - i, h - 1 - i], outline=(0, 0, 0, a))
+            out = Image.alpha_composite(out, vignette)
+        elif kind == "rect":
+            x = int(ov.get("x", 0))
+            y = int(ov.get("y", 0))
+            rw = int(ov.get("w", w))
+            rh = int(ov.get("h", 120))
+            layer = Image.new("RGBA", (rw, rh), color)
+            out.alpha_composite(layer, (x, y))
+    return out
+
+
 def compose_poster(
     matted_url: str,
     bg_url: str,
@@ -259,13 +377,19 @@ def compose_poster(
         raise FileNotFoundError(f"商品图不存在：{product_path}")
 
     bg = Image.open(bg_path).convert("RGBA")
-    bg = bg.resize((canvas_w, canvas_h))
+    bg = bg.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
+    bg = apply_template_overlays(bg, config.get("overlays") or [])
 
     product = Image.open(product_path).convert("RGBA")
     product_cfg = config["product"]
-    product = product.resize((product_cfg["w"], product_cfg["h"]))
-
-    bg.alpha_composite(product, (product_cfg["x"], product_cfg["y"]))
+    product = fit_rgba(product, product_cfg["w"], product_cfg["h"])
+    paste_product_with_shadow(
+        bg,
+        product,
+        product_cfg["x"],
+        product_cfg["y"],
+        shadow=bool(config.get("product_shadow", True)),
+    )
 
     draw = ImageDraw.Draw(bg, "RGBA")
 
@@ -275,6 +399,9 @@ def compose_poster(
     shadow_enabled = style_options.get("text_shadow_enabled", True)
 
     default_layer_config = get_default_layer_config(canvas_w, canvas_h)
+    for key, override in (config.get("text_defaults") or {}).items():
+        if key in default_layer_config and isinstance(override, dict):
+            default_layer_config[key] = {**default_layer_config[key], **override}
 
     text_layers = style_options.get("text_layers")
 
@@ -332,7 +459,8 @@ def compose_poster(
 
     filename = f"poster_{uuid.uuid4().hex}.png"
     save_path = POSTER_DIR / filename
+    POSTER_DIR.mkdir(parents=True, exist_ok=True)
 
     bg.convert("RGB").save(save_path, quality=95)
 
-    return f"/static/posters/{filename}"
+    return f"/static/poster/{filename}"

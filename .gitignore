@@ -1,21 +1,3 @@
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Environment
-.env
-
-# Database
-*.db
-
-# Generated images
-module3-background/static/background/generated/*
-module3-background/static/background/enhanced/*
-
-# IDE
-.vscode/
-=======
 # Python
 __pycache__/
 *.py[cod]
@@ -23,7 +5,12 @@ __pycache__/
 .venv/
 venv/
 
+# Env
+.env
+*.env.local
+
 # Database
+*.db
 data/*.db
 
 # Node
@@ -34,18 +21,26 @@ dist/
 .vscode/
 .idea/
 
-# Env
-.env
-*.env.local
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Static uploads (keep dirs)
-static/matte/*.png
-static/background/*.png
-static/poster/*.png
-static/poster/uploads/*.png
-!static/**/.gitkeep
+# FAISS / 本地知识库索引（体积大，可本地重新生成）
+*.faiss
+*.pkl
+module5-chat/data/faiss/
+module5-chat/data/uploads/
 
+# Generated images
+module3-background/static/background/generated/*
+module3-background/static/background/enhanced/*
+static/background/generated/*
+static/background/enhanced/*
+static/matte/*
+static/poster/*.png
+static/poster/uploads/*
+module4-poster/static/poster/*.png
+module4-poster/static/poster/uploads/*
+!static/**/.gitkeep
+!module4-poster/static/poster/**/.gitkeep
+!static/matte/.gitkeep

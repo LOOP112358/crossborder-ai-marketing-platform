@@ -92,31 +92,32 @@ async function handleRegister() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 24px;
 }
 .auth-card {
   width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 36px 32px;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 18px 22px 16px 20px / 20px 16px 22px 18px;
+  box-shadow: var(--shadow);
 }
 .auth-title {
   text-align: center;
   margin-bottom: 4px;
-  font-size: 22px;
-  color: #303133;
+  font-size: 34px;
+  font-family: var(--font-display);
 }
 .auth-subtitle {
   text-align: center;
   margin-bottom: 24px;
-  color: #909399;
+  color: var(--ink-soft);
 }
 .auth-link {
   text-align: center;
-  color: #909399;
+  color: var(--ink-soft);
 }
 .auth-link a {
-  color: #409eff;
+  color: var(--accent);
 }
 </style>
