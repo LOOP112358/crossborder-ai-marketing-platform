@@ -1,3 +1,21 @@
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Database
+*.db
+
+# Generated images
+module3-background/static/background/generated/*
+module3-background/static/background/enhanced/*
+
+# IDE
+.vscode/
+=======
 # Python
 __pycache__/
 *.py[cod]
@@ -30,3 +48,4 @@ static/background/*.png
 static/poster/*.png
 static/poster/uploads/*.png
 !static/**/.gitkeep
+
