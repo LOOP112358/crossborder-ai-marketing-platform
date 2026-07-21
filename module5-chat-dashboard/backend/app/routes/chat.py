@@ -127,6 +127,7 @@ async def _translate_query_for_search(query: str, history: str = "") -> str:
         "to maximize search recall. Include product type names, attributes, and related words.\n"
         "Example: '运动鞋' -> 'SNEAKER SHOES ATHLETIC RUNNING SPORT TECHNICAL_SPORT_SHOE'\n"
         "Example: '薯片' -> 'SNACK_CHIP_AND_CRISP CHIPS CRISPS SNACK GROCERY CRACKER POPCORN'\n"
+        "Example: '耳机' -> 'HEADPHONES EARPHONE EARBUDS BLUETOOTH HEADSET AUDIO WIRELESS'\n"
         "Example: '手机壳' -> 'CELLULAR_PHONE_CASE PHONE CASE COVER ACCESSORY'\n\n"
         f"{history_block}"
         "If the user says '还有别的吗' or 'anything else', use the previous topic from the history.\n"
@@ -276,36 +277,34 @@ async def send_message(body: MessageCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user_msg)
 
-    # 获取最近的对话历史（用于理解上下文和改写查询）
+    # 获取最近的对话历史
     history = _get_recent_history(db, body.session_id, limit=6)
 
-    # 用 LLM 将用户查询翻译为英文关键词，用于 FAISS 检索
+    # LLM 翻译中文查询为英文关键词，然后直接 SQLite LIKE 搜
     search_query = body.content
-    translated = ""
     if any('一' <= c <= '鿿' for c in body.content):
         translated = await _translate_query_for_search(body.content, history)
         if translated:
             search_query = translated
 
-    # FAISS 向量检索
+    # FAISS 向量检索（主）
     contexts = retrieve_context(body.session_id, search_query)
 
-    # 补充：翻译结果中的大写词可能对应 ABO product_type，直接查 DB
-    # 按品类商品数升序排列（越具体的品类越优先）
+    # 补充：翻译结果中的 product_type 精确匹配，直接查 DB
     if translated:
         import re
-        db_types = set(re.findall(r'[A-Z_]{4,}', translated))
-        if db_types:
-            type_counts = dict(
-                db.query(AboProduct.product_type, func.count(AboProduct.id))
-                .filter(AboProduct.product_type.in_(db_types))
-                .group_by(AboProduct.product_type).all()
+        keywords = set(re.findall(r'[A-Z_]{4,}', translated))
+        if keywords:
+            valid_types = set(
+                r[0] for r in db.query(AboProduct.product_type)
+                .filter(AboProduct.product_type.in_(keywords)).all()
             )
-            sorted_types = sorted(db_types, key=lambda t: type_counts.get(t, 99999))
-            for pt in sorted_types:
+            seen_ids = set()
+            for pt in valid_types:
                 products = db.query(AboProduct).filter(AboProduct.product_type == pt).limit(5).all()
                 for p in products:
-                    if p.faq_text not in contexts:
+                    if p.item_id not in seen_ids and p.faq_text not in contexts:
+                        seen_ids.add(p.item_id)
                         contexts.insert(0, p.faq_text)
 
     # Build catalog summary so LLM knows real inventory size

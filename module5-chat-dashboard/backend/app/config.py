@@ -24,7 +24,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "deepseek-chat")
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 TOP_K = 5
-ABO_IMPORT_LIMIT = int(os.getenv("ABO_IMPORT_LIMIT", "200000"))
+ABO_IMPORT_LIMIT = int(os.getenv("ABO_IMPORT_LIMIT", "10000"))
 
 # 默认演示用户
 DEFAULT_USER_ID = 1
