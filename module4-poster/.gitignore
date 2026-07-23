@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.log
+
+poster_module/static/uploads/
+poster_module/static/posters/
+
+chroma_db/
+node_modules/
+dist/
