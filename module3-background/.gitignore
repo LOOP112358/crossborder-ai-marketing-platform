@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+.env
+
+data/*.db
+
+static/background/generated/*
+static/background/enhanced/*
+
+.vscode/

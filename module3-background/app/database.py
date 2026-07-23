@@ -2,7 +2,9 @@ import sqlite3
 from pathlib import Path
 
 
+
 class BackgroundRepository:
+
 
     def __init__(self, db_path: Path):
 
@@ -11,9 +13,14 @@ class BackgroundRepository:
         self.init_table()
 
 
+
     def connect(self):
 
-        return sqlite3.connect(self.db_path)
+        return sqlite3.connect(
+            self.db_path
+        )
+
+
 
 
     def init_table(self):
@@ -22,6 +29,11 @@ class BackgroundRepository:
 
         cursor = conn.cursor()
 
+
+
+        # ==========================
+        # 历史生成记录
+        # ==========================
 
         cursor.execute(
             """
@@ -51,17 +63,61 @@ class BackgroundRepository:
         )
 
 
+
+        # ==========================
+        # 背景缓存表
+        # ==========================
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS background_cache
+            (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+
+                cache_key TEXT UNIQUE NOT NULL,
+
+
+                category TEXT,
+
+                style TEXT,
+
+                color_hint TEXT,
+
+
+                bg_url TEXT,
+
+
+                enhanced_url TEXT,
+
+
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+
+            )
+            """
+        )
+
+
+
         conn.commit()
 
         conn.close()
 
 
 
+
+
+    # ==================================
+    # 保存历史生成记录
+    # ==================================
+
     def create(self,data):
 
         conn=self.connect()
 
         cursor=conn.cursor()
+
 
 
         cursor.execute(
@@ -83,14 +139,39 @@ class BackgroundRepository:
             """,
 
             (
-                data.get("user_id",1),
+
+                data.get(
+                    "user_id",
+                    1
+                ),
+
                 data["product_category"],
-                data.get("style"),
-                data.get("color_hint"),
-                data.get("prompt_used"),
-                data.get("bg_url"),
-                data.get("enhanced_url"),
-                data.get("scale_factor",2)
+
+                data.get(
+                    "style"
+                ),
+
+                data.get(
+                    "color_hint"
+                ),
+
+                data.get(
+                    "prompt_used"
+                ),
+
+                data.get(
+                    "bg_url"
+                ),
+
+                data.get(
+                    "enhanced_url"
+                ),
+
+                data.get(
+                    "scale_factor",
+                    2
+                )
+
             )
 
         )
@@ -98,37 +179,217 @@ class BackgroundRepository:
 
         conn.commit()
 
-        id=cursor.lastrowid
+
+        id = cursor.lastrowid
+
 
         conn.close()
 
 
+
         return {
+
             "id":id,
+
             **data
+
         }
 
 
 
-    def list(self,user_id=1):
+
+
+    # ==================================
+    # 查询缓存
+    # ==================================
+
+    def get_cache(
+            self,
+            cache_key
+    ):
+
 
         conn=self.connect()
 
         cursor=conn.cursor()
 
 
-        rows=cursor.execute(
+
+        row = cursor.execute(
             """
-            SELECT *
-            FROM history_background
-            WHERE user_id=?
-            ORDER BY id DESC
+            SELECT
+                cache_key,
+                category,
+                style,
+                color_hint,
+                bg_url,
+                enhanced_url
+
+            FROM background_cache
+
+            WHERE cache_key=?
+
             """,
-            (user_id,)
-        ).fetchall()
+
+            (
+                cache_key,
+            )
+
+        ).fetchone()
+
 
 
         conn.close()
 
 
+
+        if row is None:
+
+            return None
+
+
+
+        return {
+
+
+            "cache_key":row[0],
+
+            "category":row[1],
+
+            "style":row[2],
+
+            "color_hint":row[3],
+
+            "bg_url":row[4],
+
+            "enhanced_url":row[5]
+
+        }
+
+
+
+
+
+    # ==================================
+    # 保存缓存
+    # ==================================
+
+    def save_cache(
+            self,
+            data
+    ):
+
+
+        conn=self.connect()
+
+        cursor=conn.cursor()
+
+
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO background_cache
+            (
+                cache_key,
+                category,
+                style,
+                color_hint,
+                bg_url,
+                enhanced_url
+            )
+
+
+            VALUES
+            (?,?,?,?,?,?)
+
+            """,
+
+            (
+
+                data["cache_key"],
+
+                data["category"],
+
+                data.get("style"),
+
+                data.get("color_hint"),
+
+                data["bg_url"],
+
+                data["sd_url"]
+
+            )
+
+        )
+
+
+
+        conn.commit()
+
+        conn.close()
+
+
+
+
+
+    # ==================================
+    # 查询历史
+    # ==================================
+
+    def list(
+            self,
+            user_id=1
+    ):
+
+
+        conn=self.connect()
+
+        cursor=conn.cursor()
+
+
+
+        rows=cursor.execute(
+            """
+            SELECT *
+
+            FROM history_background
+
+            WHERE user_id=?
+
+            ORDER BY id DESC
+
+            """,
+
+            (
+                user_id,
+            )
+
+        ).fetchall()
+
+
+
+        conn.close()
+
+
+
         return rows
+
+
+    def get_by_id(self,id):
+
+        conn=self.connect()
+
+        cursor=conn.cursor()
+
+        row = cursor.execute(
+            """
+            SELECT *
+            FROM history_background
+            WHERE id=?
+            """,
+            (id,)
+        ).fetchone()
+
+        conn.close()
+
+        return row
