@@ -1,19 +1,22 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 
 from .services import (
     build_prompt,
+    build_sd_prompt,
+    build_cache_key,
     generate_background,
-    super_resolution
-    
+    generate_stable_diffusion
 )
-print("加载的是我的services.py")
 
 from .database import BackgroundRepository
+
+
+print("加载的是最新的main.py")
 
 
 
@@ -23,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "static"
 
 
+
 GENERATED_DIR = (
     STATIC /
     "background" /
@@ -30,11 +34,13 @@ GENERATED_DIR = (
 )
 
 
+
 ENHANCED_DIR = (
     STATIC /
     "background" /
     "enhanced"
 )
+
 
 
 GENERATED_DIR.mkdir(
@@ -50,16 +56,19 @@ ENHANCED_DIR.mkdir(
 
 
 
+
 repo = BackgroundRepository(
     ROOT / "data" / "background.db"
 )
 
 
 
+
 app = FastAPI(
-    title="背景生成与超分增强 API",
+    title="背景双模型生成 API",
     version="1.0.0"
 )
+
 
 
 
@@ -72,6 +81,7 @@ app.add_middleware(
 
 
 
+
 app.mount(
     "/static",
     StaticFiles(directory=STATIC),
@@ -80,13 +90,23 @@ app.mount(
 
 
 
-def ok(data=None,message="success"):
+
+def ok(
+        data=None,
+        message="success"
+):
 
     return {
+
         "code":0,
+
         "message":message,
+
         "data":data
+
     }
+
+
 
 
 
@@ -94,81 +114,453 @@ def ok(data=None,message="success"):
 def home():
 
     return {
+
         "message":
         "background module running"
+
     }
 
+#==============================
+#=========成员4接口==========
+@app.get("/api/background/history")
+def history():
+
+    data = repo.list()
+
+    return ok(
+        data,
+        "获取背景历史"
+    )
+#=============================
 
 
-@app.post("/api/background/generate")
-async def generate(
+# ==================================================
+# 成员2调用接口
+# 商品识别结果 -> 背景生成
+# ==================================================
 
-    category:str=Form(...),
-
-    style:str=Form("default"),
-
-    color_hint:str=Form("")
-
+@app.post("/api/background/generate_from_product")
+async def generate_from_product(
+        data: dict = Body(...)
 ):
 
 
-    # 1. 自动生成prompt
+    # 成员2返回的商品类别
 
-    prompt = build_prompt(
+    category = data.get(
+        "category",
+        "unknown"
+    )
+
+
+
+    attributes = data.get(
+        "attributes",
+        {}
+    )
+
+
+
+    # 兼容中英文属性字段
+
+    style = (
+
+        attributes.get("style")
+
+        or
+
+        attributes.get("风格")
+
+        or
+
+        "modern commercial"
+
+    )
+
+
+
+    color_hint = (
+
+        attributes.get("color")
+
+        or
+
+        attributes.get("颜色")
+
+        or
+
+        ""
+
+    )
+
+
+
+    print("===== 成员2传入 =====")
+    print(data)
+
+    print("category:",category)
+    print("style:",style)
+    print("color:",color_hint)
+    print("========== 成员2调用背景生成 ==========")
+
+
+
+    return await generate(
         category,
         style,
         color_hint
     )
 
 
-    # 2. 生成背景
+
+
+
+
+
+
+
+# ==================================================
+# 普通背景生成接口
+# 前端调用
+# ==================================================
+
+@app.post("/api/background/generate")
+async def generate(
+
+    category: str = Form(...),
+
+    style: str = Form("default"),
+
+    color_hint: str = Form("")
+
+):
+
+
+    # =========================
+    # 1. 创建缓存key
+    # =========================
+
+
+    cache_key = build_cache_key(
+        category,
+        style,
+        color_hint
+    )
+
+
+
+    print(
+        "当前缓存key:",
+        cache_key
+    )
+
+
+
+
+
+    # =========================
+    # 2. 查询缓存
+    # =========================
+
+
+    cache = repo.get_cache(
+        cache_key
+    )
+
+
+
+    if cache:
+
+
+        print(
+            "========== 命中缓存 =========="
+        )
+
+
+        return ok(
+            cache,
+            "返回缓存背景"
+        )
+
+
+
+    print(
+        "========== 未命中缓存，开始生成 =========="
+    )
+
+
+
+
+
+    # =========================
+    # 3. 豆包 Prompt
+    # =========================
+
+
+    prompt = build_prompt(
+
+        category,
+
+        style,
+
+        color_hint
+
+    )
+
+
+
+
+
+    # =========================
+    # 4. SD Prompt
+    # =========================
+
+
+    sd_prompt = build_sd_prompt(
+
+        category,
+
+        style,
+
+        color_hint
+
+    )
+
+
+
+    print(
+        "========== 豆包Prompt =========="
+    )
+
+    print(prompt)
+
+
+
+    print(
+        "========== SD Prompt =========="
+    )
+
+    print(sd_prompt)
+
+
+
+
+
+
+    # =========================
+    # 5. 豆包生成
+    # =========================
+
 
     bg_path = generate_background(
+
         prompt,
+
         GENERATED_DIR
+
     )
 
 
-    # 3. 超分
 
-    enhanced_path = super_resolution(
-        bg_path,
+
+
+
+
+    # =========================
+    # 6. SD生成
+    # =========================
+
+
+    enhanced_path = generate_stable_diffusion(
+
+        sd_prompt,
+
         ENHANCED_DIR
+
     )
+
+
+
+
+
 
 
     bg_url = (
+
         "/static/background/generated/"
+
         +
+
         bg_path.name
+
     )
+
 
 
     enhanced_url = (
+
         "/static/background/enhanced/"
+
         +
+
         enhanced_path.name
+
     )
+
+
+
+
+
+
+
+    # =========================
+    # 7. 保存历史
+    # =========================
 
 
     record = repo.create({
 
-        "product_category":category,
+        "product_category":
 
-        "style":style,
+            category,
 
-        "color_hint":color_hint,
 
-        "prompt_used":prompt,
+        "style":
 
-        "bg_url":bg_url,
+            style,
 
-        "enhanced_url":enhanced_url
+
+        "color_hint":
+
+            color_hint,
+
+
+        "prompt_used":
+
+            (
+                "Seedream Prompt:\n"
+
+                +
+
+                prompt
+
+                +
+
+                "\n\nSD Prompt:\n"
+
+                +
+
+                sd_prompt
+            ),
+
+
+        "bg_url":
+
+            bg_url,
+
+
+        "enhanced_url":
+
+            enhanced_url
 
     })
 
 
+
+
+
+
+
+    # =========================
+    # 8. 保存缓存
+    # =========================
+
+
+    repo.save_cache({
+
+        "cache_key":
+
+            cache_key,
+
+
+        "category":
+
+            category,
+
+
+        "style":
+
+            style,
+
+
+        "color_hint":
+
+            color_hint,
+
+
+        "bg_url":
+
+            bg_url,
+
+
+        "sd_url":
+
+            enhanced_url
+
+    })
+
+
+
+
+
+
     return ok(
+
         record,
+
         "背景生成完成"
+
+    )
+
+
+
+
+
+
+
+
+
+# ==================================================
+# 成员4调用接口
+# 根据历史id获取背景
+# ==================================================
+
+@app.get("/api/background/history/{id}")
+def get_history(id:int):
+
+
+    result = repo.get_by_id(
+        id
+    )
+
+
+    if result is None:
+
+
+        return ok(
+
+            None,
+
+            "not found"
+
+        )
+
+
+
+    return ok(
+
+        result,
+
+        "success"
+
     )
