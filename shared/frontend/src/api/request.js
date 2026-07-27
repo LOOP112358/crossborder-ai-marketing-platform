@@ -21,6 +21,10 @@ request.interceptors.request.use(
 // 响应拦截器：统一解包 + 错误处理
 request.interceptors.response.use(
   (response) => {
+    // 文件下载（Excel/PDF）直接返回 Blob
+    if (response.config.responseType === 'blob' || response.data instanceof Blob) {
+      return response.data
+    }
     const res = response.data
     // 如果直接返回了数据（非标准格式），原样返回
     if (res.code === undefined) return res
@@ -31,7 +35,10 @@ request.interceptors.response.use(
     return res.data
   },
   (error) => {
-    const msg = error.response?.data?.detail || error.message || '网络错误'
+    let msg = error.message || '网络错误'
+    const data = error.response?.data
+    if (typeof data?.detail === 'string') msg = data.detail
+    else if (Array.isArray(data?.detail)) msg = data.detail.map((d) => d.msg || d).join(', ')
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
