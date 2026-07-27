@@ -1,13 +1,25 @@
 """启动时填充演示数据，并尝试导入 ABO 知识库。"""
 import random
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta, time
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.security import hash_password
 from app.models.user import User
-from app.models.chat import AboProduct
+from app.models.writing import WritingHistory
+from app.models.matte import MatteHistory
+from app.models.background import BackgroundHistory
+from app.models.poster import PosterHistory, Template
+from app.models.chat import (
+    AboProduct,
+    ChatSession,
+    ChatMessage,
+    ChatFeedback,
+    SystemDailyStat,
+    ModuleError,
+)
 from app.modules.chat.services.rag_service import build_global_abo_index
 
 
@@ -84,6 +96,35 @@ SAMPLE_PRODUCTS = [
     },
 ]
 
+CATEGORIES = [
+    ("电子产品", "ELECTRONICS"),
+    ("服装", "APPAREL"),
+    ("厨房用品", "KITCHEN"),
+    ("家居", "HOME"),
+    ("鞋类", "FOOTWEAR"),
+]
+
+WRITING_PRODUCTS = [
+    ("无线蓝牙耳机", "主动降噪, 长续航", "Amazon", "专业商务"),
+    ("有机棉T恤", "透气亲肤, 可机洗", "Shopee", "活泼种草"),
+    ("不锈钢保温杯", "保冷24小时", "TikTok", "极简高级"),
+    ("LED护眼台灯", "三档色温, USB充电", "Amazon", "情感共鸣"),
+    ("轻量跑步鞋", "缓震防滑", "eBay", "幽默风趣"),
+    ("便携咖啡杯", "防漏设计", "Shopify", "奢华高端"),
+    ("无线充电器", "15W快充", "Amazon", "专业商务"),
+    ("瑜伽垫", "防滑加厚", "Shopee", "活泼种草"),
+]
+
+BG_STYLES = ["户外自然", "简约白底", "科技感", "奢华质感", "生活场景"]
+
+CHAT_QA = [
+    ("这款耳机续航多久？", "根据商品信息，该无线蓝牙耳机续航约 30 小时，支持主动降噪与 IPX5 防水。"),
+    ("保温杯能保冷多久？", "双层真空隔热设计，官方卖点为保冷约 24 小时，容量 750ml，不含 BPA。"),
+    ("T恤材质是什么？", "采用 100% 有机棉，透气可机洗，男女同款剪裁。"),
+    ("台灯有几档色温？", "支持三档色温与触摸调光，并带 USB 充电口与护眼技术。"),
+    ("跑步鞋有哪些尺码？", "常见尺码覆盖 US 7–12，鞋面为轻量网面，鞋底防滑并带缓震。"),
+]
+
 
 def _build_faq(p: dict) -> str:
     bullets = p.get("bullet_points", "").replace("|", "; ")
@@ -103,70 +144,239 @@ def _build_faq(p: dict) -> str:
     )
 
 
-def _seed_demo_history(db: Session) -> None:
-    """填充各成员历史表，让看板有真实统计数据。"""
-    today = date.today()
-    for i in range(7):
-        d = today - timedelta(days=i)
-        db.execute(
-            text(
-                """
-                INSERT OR IGNORE INTO system_daily_stats
-                (stat_date, total_users, writing_calls, matte_calls, bg_calls, poster_calls, chat_calls, error_count)
-                VALUES (:d, :u, :w, :m, :b, :p, :c, :e)
-                """
-            ),
-            {
-                "d": d.isoformat(),
-                "u": 5 + i,
-                "w": random.randint(3, 15),
-                "m": random.randint(2, 12),
-                "b": random.randint(2, 10),
-                "p": random.randint(1, 8),
-                "c": random.randint(1, 6),
-                "e": random.randint(0, 2),
-            },
-        )
+def _rand_dt(day: date) -> datetime:
+    """某天内的随机时间，方便看板按 date(created_at) 汇总。"""
+    return datetime.combine(
+        day,
+        time(hour=random.randint(8, 22), minute=random.randint(0, 59), second=random.randint(0, 59)),
+    )
 
-    categories = [
-        ("ELECTRONICS", "电子产品"),
-        ("APPAREL", "服装"),
-        ("KITCHEN", "厨房用品"),
-        ("HOME", "家居"),
-        ("FOOTWEAR", "鞋类"),
+
+def _ensure_demo_users(db: Session) -> list[User]:
+    """确保有可登录的演示账号 + 若干用户，让总用户数好看。"""
+    specs = [
+        ("demo", "demo123"),
+        ("seller_alice", "pass1234"),
+        ("seller_bob", "pass1234"),
+        ("ops_chen", "pass1234"),
+        ("ops_wang", "pass1234"),
     ]
-    for i, (cat_en, cat_zh) in enumerate(categories):
-        for j in range(random.randint(2, 5)):
-            db.execute(
-                text(
-                    """
-                    INSERT INTO history_matte (user_id, original_url, matted_url, category, category_en, confidence)
-                    VALUES (1, :o, :m, :c, :ce, :conf)
-                    """
-                ),
-                {
-                    "o": f"/static/orig_{i}_{j}.jpg",
-                    "m": f"/static/matte_{i}_{j}.png",
-                    "c": cat_zh,
-                    "ce": cat_en,
-                    "conf": round(random.uniform(0.85, 0.99), 2),
-                },
+    users: list[User] = []
+    for username, password in specs:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            user = User(username=username, password_hash=hash_password(password), role="user")
+            db.add(user)
+            db.flush()
+        elif user.password_hash in ("demo_hash", "", None) or not str(user.password_hash).startswith("$2"):
+            # 旧种子写了无效 hash，补成可登录
+            user.password_hash = hash_password(password)
+        users.append(user)
+    db.commit()
+    return users
+
+
+def _rebuild_daily_stats(db: Session, days: int = 7) -> None:
+    """按历史表回填近 N 天 system_daily_stats，供趋势图使用。"""
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    today = date.today()
+
+    for i in range(days):
+        d = today - timedelta(days=i)
+        d_str = d.isoformat()
+
+        def count_table(table: str) -> int:
+            row = db.execute(
+                text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),
+                {"d": d_str},
+            ).scalar()
+            return int(row or 0)
+
+        writing = count_table("history_writing")
+        matte = count_table("history_matte")
+        bg = count_table("history_background")
+        poster = count_table("history_poster")
+        chat_msgs = count_table("chat_messages")
+        chat = chat_msgs // 2
+        errors = count_table("module_errors")
+
+        stat = db.query(SystemDailyStat).filter(SystemDailyStat.stat_date == d).first()
+        if not stat:
+            stat = SystemDailyStat(stat_date=d)
+            db.add(stat)
+        stat.total_users = total_users
+        stat.writing_calls = writing
+        stat.matte_calls = matte
+        stat.bg_calls = bg
+        stat.poster_calls = poster
+        stat.chat_calls = chat
+        stat.error_count = errors
+
+    db.commit()
+
+
+def seed_demo_history(db: Session, *, force: bool = False) -> bool:
+    """填充各模块调用历史，让运营看板有可演示的数据。
+
+    默认仅在几乎无历史时写入；force=True 时仍跳过已有演示标记行的重复刷入
+    （用 writing 条数判断）。
+    """
+    existing = db.query(func.count(WritingHistory.id)).scalar() or 0
+    if existing >= 8 and not force:
+        print(f"[seed] 调用历史已存在（文案 {existing} 条），跳过演示数据填充")
+        return False
+
+    users = _ensure_demo_users(db)
+    user_ids = [u.id for u in users]
+    primary = user_ids[0]
+
+    templates = db.query(Template).filter(Template.is_active.is_(True)).all()
+    template_id = templates[0].id if templates else None
+
+    today = date.today()
+    # 近 7 天：工作日调用多、周末略少
+    for day_offset in range(7):
+        day = today - timedelta(days=day_offset)
+        weekday = day.weekday()  # 0=周一
+        scale = 0.55 if weekday >= 5 else 1.0
+
+        n_writing = max(2, int(random.randint(4, 10) * scale))
+        n_matte = max(2, int(random.randint(3, 9) * scale))
+        n_bg = max(1, int(random.randint(2, 7) * scale))
+        n_poster = max(1, int(random.randint(2, 6) * scale))
+        n_chat = max(1, int(random.randint(2, 5) * scale))
+
+        for _ in range(n_writing):
+            name, feats, platform, style = random.choice(WRITING_PRODUCTS)
+            db.add(
+                WritingHistory(
+                    user_id=random.choice(user_ids),
+                    product_name=name,
+                    product_features=feats,
+                    platform=platform,
+                    title=f"【热卖】{name}｜跨境爆款推荐",
+                    body=f"{name}主打{feats}，适合多平台投放，点击转化表现稳定。",
+                    tags="跨境,爆款,AI文案",
+                    language=random.choice(["zh", "en", "ja"]),
+                    style=style,
+                    created_at=_rand_dt(day),
+                )
             )
 
-    for i in range(10):
-        db.execute(
-            text(
-                """
-                INSERT INTO history_writing (user_id, product_name, platform, title, body)
-                VALUES (1, :pn, 'Amazon', :t, :b)
-                """
-            ),
-            {
-                "pn": f"Product {i+1}",
-                "t": f"Title for product {i+1}",
-                "b": f"Description body for product {i+1}",
-            },
+        for _ in range(n_matte):
+            cat_zh, cat_en = random.choice(CATEGORIES)
+            idx = random.randint(100, 999)
+            db.add(
+                MatteHistory(
+                    user_id=random.choice(user_ids),
+                    original_url=f"/static/matte/demo_orig_{day_offset}_{idx}.jpg",
+                    matted_url=f"/static/matte/demo_matted_{day_offset}_{idx}.png",
+                    category=cat_zh,
+                    category_en=cat_en,
+                    confidence=round(random.uniform(0.86, 0.99), 2),
+                    attributes='{"demo": true}',
+                    file_size=random.randint(80_000, 420_000),
+                    created_at=_rand_dt(day),
+                )
+            )
+
+        for _ in range(n_bg):
+            cat_zh, _ = random.choice(CATEGORIES)
+            style = random.choice(BG_STYLES)
+            idx = random.randint(100, 999)
+            db.add(
+                BackgroundHistory(
+                    user_id=random.choice(user_ids),
+                    product_category=cat_zh,
+                    style=style,
+                    color_hint=random.choice(["暖色", "冷色", "中性", ""]),
+                    prompt_used=f"{cat_zh} product on {style} background, ecommerce photography",
+                    bg_url=f"/static/background/demo_bg_{day_offset}_{idx}.png",
+                    enhanced_url=f"/static/background/demo_bg_hq_{day_offset}_{idx}.png",
+                    scale_factor=2,
+                    created_at=_rand_dt(day),
+                )
+            )
+
+        for _ in range(n_poster):
+            name, _, _, _ = random.choice(WRITING_PRODUCTS)
+            idx = random.randint(100, 999)
+            db.add(
+                PosterHistory(
+                    user_id=random.choice(user_ids),
+                    matted_url=f"/static/matte/demo_matted_{day_offset}_{idx}.png",
+                    bg_url=f"/static/background/demo_bg_hq_{day_offset}_{idx}.png",
+                    template_id=template_id,
+                    poster_url=f"/static/poster/demo_poster_{day_offset}_{idx}.png",
+                    title=name,
+                    discount=random.choice(["20% OFF", "限时特惠", "买一送一", "Flash Sale"]),
+                    price=random.choice(["$19.99", "$29.90", "¥99", "¥199"]),
+                    ratio=random.choice(["1:1", "4:5", "9:16"]),
+                    downloads=random.randint(0, 12),
+                    created_at=_rand_dt(day),
+                )
+            )
+
+        for _ in range(n_chat):
+            q, a = random.choice(CHAT_QA)
+            session = ChatSession(
+                user_id=random.choice(user_ids),
+                title=q[:18] + ("…" if len(q) > 18 else ""),
+                created_at=_rand_dt(day),
+            )
+            db.add(session)
+            db.flush()
+            t0 = _rand_dt(day)
+            user_msg = ChatMessage(
+                session_id=session.id,
+                role="user",
+                content=q,
+                language="zh",
+                created_at=t0,
+            )
+            asst_msg = ChatMessage(
+                session_id=session.id,
+                role="assistant",
+                content=a,
+                language="zh",
+                created_at=t0 + timedelta(seconds=random.randint(2, 20)),
+            )
+            db.add(user_msg)
+            db.add(asst_msg)
+            db.flush()
+            # 多数点赞，少量点踩，满意度好看
+            fb_type = "like" if random.random() < 0.82 else "dislike"
+            db.add(
+                ChatFeedback(
+                    message_id=asst_msg.id,
+                    user_id=primary,
+                    feedback_type=fb_type,
+                    created_at=asst_msg.created_at + timedelta(seconds=5),
+                )
+            )
+
+    # 少量错误记录：背景模块略高，便于演示「异常预警」，但不全盘告警
+    for day_offset in range(3):
+        day = today - timedelta(days=day_offset)
+        db.add(
+            ModuleError(
+                module_name="background",
+                error_message="上游图像 API 超时（演示数据）",
+                created_at=_rand_dt(day),
+            )
         )
+    db.add(
+        ModuleError(
+            module_name="matte",
+            error_message="上传图片格式不支持（演示数据）",
+            created_at=_rand_dt(today),
+        )
+    )
+
+    db.commit()
+    _rebuild_daily_stats(db, days=7)
+    print("[seed] 已写入近 7 天调用历史（文案/抠图/背景/海报/客服）与看板日统计")
+    return True
 
 
 def _import_abo_products(db: Session) -> int:
@@ -216,16 +426,11 @@ def _rebuild_abo_index(db: Session) -> None:
 def seed_if_empty() -> None:
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.username == "demo").first()
-        if not user:
-            db.add(User(username="demo", password_hash="demo_hash", role="user"))
-            db.commit()
+        # 演示账号 + 调用历史（看板用）
+        seed_demo_history(db, force=False)
 
-        # 只导入 ABO 知识库商品，不再填充假统计数据
-        # 看板数据完全由 refresh_daily_stats 从真实调用记录中汇总
         count = _import_abo_products(db)
         # 数据量大时跳过全局 FAISS 重建，避免 OOM
-        # 检索走 product_type 精确匹配 + 会话级 FAISS
         if count < 5000:
             _rebuild_abo_index(db)
         print(f"[seed] ABO 知识库已就绪，共 {count} 条商品")
