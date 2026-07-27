@@ -11,7 +11,7 @@ from app.modules.chat.services.config import FAISS_DIR, TOP_K
 
 
 class EmbeddingEngine:
-    """TF-IDF + FAISS 轻量向量引擎，无需下载大模型。"""
+    """TF-IDF + FAISS 检索引擎，配合 LLM 查询翻译实现跨语言匹配。"""
 
     def __init__(self):
         self.vectorizer: Optional[TfidfVectorizer] = None
@@ -22,7 +22,12 @@ class EmbeddingEngine:
         if not chunks:
             raise ValueError("没有可索引的文本内容")
         self.chunks = chunks
-        self.vectorizer = TfidfVectorizer(max_features=4096, ngram_range=(1, 2))
+        # 字符级 1-3 gram，增强中英文混合匹配（来自 feature/module5 二轮优化）
+        self.vectorizer = TfidfVectorizer(
+            max_features=4096,
+            ngram_range=(1, 3),
+            analyzer="char_wb",
+        )
         matrix = self.vectorizer.fit_transform(chunks).astype(np.float32).toarray()
         faiss.normalize_L2(matrix)
         self.index = faiss.IndexFlatIP(matrix.shape[1])

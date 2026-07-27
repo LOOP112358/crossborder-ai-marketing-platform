@@ -16,27 +16,30 @@ def _today() -> date:
     return date.today()
 
 
+def _count_on_date(db: Session, table: str, day: date, *, half: bool = False) -> int:
+    """按自然日从业务历史表计数（不依赖可能过期的 system_daily_stats 快照）。"""
+    try:
+        row = db.execute(
+            text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),
+            {"d": day.isoformat()},
+        ).scalar()
+        n = int(row or 0)
+        return n // 2 if half else n
+    except Exception:
+        return 0
+
+
 def refresh_daily_stats(db: Session) -> SystemDailyStat:
     """从各历史表汇总今日统计并写入 system_daily_stats。"""
     today = _today()
     total_users = db.query(func.count(User.id)).scalar() or 0
 
-    def count_table(table: str) -> int:
-        try:
-            row = db.execute(text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),{"d": today.isoformat()}).scalar()
-            return int(row or 0)
-        except Exception:
-            return 0
-
-    writing = count_table("history_writing")
-    matte = count_table("history_matte")
-    bg = count_table("history_background")
-    poster = count_table("history_poster")
-    chat = count_table("chat_messages") // 2  # user+assistant 算一次对话轮次
-    errors = db.execute(
-        text("SELECT COUNT(*) FROM module_errors WHERE date(created_at) = :d"),
-        {"d": today.isoformat()},
-    ).scalar() or 0
+    writing = _count_on_date(db, "history_writing", today)
+    matte = _count_on_date(db, "history_matte", today)
+    bg = _count_on_date(db, "history_background", today)
+    poster = _count_on_date(db, "history_poster", today)
+    chat = _count_on_date(db, "chat_messages", today, half=True)  # user+assistant 算一次
+    errors = _count_on_date(db, "module_errors", today)
 
     stat = db.query(SystemDailyStat).filter(SystemDailyStat.stat_date == today).first()
     if not stat:
@@ -134,25 +137,43 @@ def get_dashboard_stats(db: Session) -> Dict[str, Any]:
 
 
 def get_trend_data(db: Session, days: int = 7) -> List[Dict[str, Any]]:
-    start = _today() - timedelta(days=days - 1)
-    rows = (
-        db.query(SystemDailyStat)
-        .filter(SystemDailyStat.stat_date >= start)
-        .order_by(SystemDailyStat.stat_date)
-        .all()
-    )
-    return [
-        {
-            "stat_date": r.stat_date.isoformat(),
-            "writing_calls": r.writing_calls,
-            "matte_calls": r.matte_calls,
-            "bg_calls": r.bg_calls,
-            "poster_calls": r.poster_calls,
-            "chat_calls": r.chat_calls,
-            "error_count": r.error_count,
-        }
-        for r in rows
-    ]
+    """近 N 天趋势：直接汇总各历史表，保证抠图/背景/海报等已写入记录都能显示。"""
+    today = _today()
+    result: List[Dict[str, Any]] = []
+    for i in range(days - 1, -1, -1):
+        day = today - timedelta(days=i)
+        writing = _count_on_date(db, "history_writing", day)
+        matte = _count_on_date(db, "history_matte", day)
+        bg = _count_on_date(db, "history_background", day)
+        poster = _count_on_date(db, "history_poster", day)
+        chat = _count_on_date(db, "chat_messages", day, half=True)
+        errors = _count_on_date(db, "module_errors", day)
+        # 顺带回写当日快照，导出/旧逻辑仍可读
+        stat = db.query(SystemDailyStat).filter(SystemDailyStat.stat_date == day).first()
+        if not stat:
+            stat = SystemDailyStat(stat_date=day)
+            db.add(stat)
+        if day == today:
+            stat.total_users = db.query(func.count(User.id)).scalar() or 0
+        stat.writing_calls = writing
+        stat.matte_calls = matte
+        stat.bg_calls = bg
+        stat.poster_calls = poster
+        stat.chat_calls = chat
+        stat.error_count = errors
+        result.append(
+            {
+                "stat_date": day.isoformat(),
+                "writing_calls": writing,
+                "matte_calls": matte,
+                "bg_calls": bg,
+                "poster_calls": poster,
+                "chat_calls": chat,
+                "error_count": errors,
+            }
+        )
+    db.commit()
+    return result
 
 
 def build_advice_summary(db: Session) -> str:

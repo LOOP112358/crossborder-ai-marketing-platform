@@ -25,10 +25,10 @@
       </el-col>
 
       <el-col :span="18">
-        <el-card shadow="never" class="chat-panel" v-if="currentSessionId">
+        <el-card shadow="never" class="chat-panel">
           <template #header>
             <div class="chat-head">
-              <span>{{ currentTitle }}</span>
+              <span>{{ currentTitle || '新对话' }}</span>
               <div class="chat-tools">
                 <el-radio-group v-model="replyLang" size="small">
                   <el-radio-button label="auto">自动</el-radio-button>
@@ -81,8 +81,6 @@
             </el-input>
           </div>
         </el-card>
-
-        <el-empty v-else description="选择或创建一个会话开始聊天" />
       </el-col>
     </el-row>
   </div>
@@ -154,17 +152,23 @@ async function loadMessages() {
 async function sendMsg() {
   if (!inputText.value.trim() || loading.value) return
   loading.value = true
+  const text = inputText.value.trim()
   try {
+    if (!currentSessionId.value) {
+      const created = await request.post('/chat/sessions', { title: text.slice(0, 20) || '新会话' })
+      sessions.value.unshift(created)
+      currentSessionId.value = created.id
+    }
     const data = await request.post('/chat/message', {
       session_id: currentSessionId.value,
-      content: inputText.value,
+      content: text,
       language: replyLang.value,
     })
     if (data?.user_message && data?.assistant_message) {
       messages.value.push(data.user_message, data.assistant_message)
     } else if (data?.content) {
       messages.value.push(
-        { id: `u-${Date.now()}`, role: 'user', content: inputText.value, created_at: new Date().toISOString() },
+        { id: `u-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString() },
         data,
       )
     }
@@ -178,6 +182,13 @@ async function sendMsg() {
 async function onUploadDoc(uploadFile) {
   uploading.value = true
   try {
+    if (!currentSessionId.value) {
+      const created = await request.post('/chat/sessions', {
+        title: uploadFile.name?.slice(0, 40) || '文档会话',
+      })
+      sessions.value.unshift(created)
+      currentSessionId.value = created.id
+    }
     const fd = new FormData()
     fd.append('session_id', String(currentSessionId.value))
     fd.append('file', uploadFile.raw)

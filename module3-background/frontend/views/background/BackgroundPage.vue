@@ -34,11 +34,11 @@
           <template #header>生成结果</template>
           <el-row :gutter="16">
             <el-col :span="12">
-              <p class="img-label">原始背景 (1024×1024)</p>
+              <p class="img-label">豆包 Seedream</p>
               <img :src="result.bg_url" class="result-img" />
             </el-col>
             <el-col :span="12">
-              <p class="img-label">超分增强 (2048×2048)</p>
+              <p class="img-label">Stable Diffusion</p>
               <img :src="result.enhanced_url" class="result-img" />
             </el-col>
           </el-row>

@@ -194,7 +194,7 @@ const layers = [
 const form = reactive({
   matted_url: '',
   bg_url: '',
-  template_id: 3,
+  template_id: 2,
   title: '',
   subtitle: '',
   selling_point_1: '',
@@ -258,7 +258,7 @@ async function loadTemplates() {
     templates.value = await request.get('/poster/templates')
     const ids = templates.value.map((t) => t.id)
     if (!ids.includes(form.template_id)) {
-      form.template_id = ids.includes(3) ? 3 : (ids[0] || 3)
+      form.template_id = ids.includes(2) ? 2 : (ids[0] || 2)
     }
     onTemplateChange(form.template_id, true)
   } catch {}

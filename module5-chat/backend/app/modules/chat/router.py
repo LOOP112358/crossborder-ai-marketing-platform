@@ -9,11 +9,12 @@ from app.models.user import User
 from app.core.database import get_db
 from app.models.chat import ChatSession, ChatMessage, ChatFeedback, AboProduct
 from app.modules.chat.schemas import SessionCreate, SessionOut, MessageCreate, MessageOut, MessageResponse, FeedbackCreate, FeedbackOut
-from app.modules.chat.services.config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, UPLOAD_DIR
+from app.modules.chat.services.config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, UPLOAD_DIR, FAISS_DIR
 from app.modules.chat.services.document_parser import parse_document, chunk_text
 from app.modules.chat.services.rag_service import build_session_index, retrieve_context
 from app.modules.chat.services.llm_service import generate_bilingual_reply
 from app.modules.chat.services.stats_service import refresh_daily_stats
+from app.modules.chat.services.search_service import search_products_like
 from app.modules.chat.services.product_search import (
     detect_product_types,
     local_english_keywords,
@@ -182,26 +183,70 @@ def _build_catalog_summary(db: Session) -> str:
     )
 
 
-@router.post("/sessions", response_model=SessionOut)
+@router.post("/sessions")
 def create_session(body: SessionCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = ChatSession(user_id=current_user.id, title=body.title or "新会话")
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-    return session
+    db.add(session); db.commit(); db.refresh(session)
+    return _ok(SessionOut.model_validate(session).model_dump(), "会话创建成功")
 
 
-@router.get("/sessions", response_model=list[SessionOut])
+@router.get("/sessions")
 def list_sessions(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return (
+    sessions = (
         db.query(ChatSession)
         .filter(ChatSession.user_id == current_user.id)
         .order_by(ChatSession.created_at.desc())
         .all()
     )
+    return _ok([SessionOut.model_validate(s).model_dump() for s in sessions])
 
 
-@router.get("/messages/{session_id}", response_model=list[MessageOut])
+@router.delete("/sessions/{session_id}")
+def delete_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id)
+        .first()
+    )
+    if not session:
+        raise HTTPException(404, "会话不存在")
+
+    msg_ids = [
+        m.id
+        for m in db.query(ChatMessage.id).filter(ChatMessage.session_id == session_id).all()
+    ]
+    if msg_ids:
+        db.query(ChatFeedback).filter(ChatFeedback.message_id.in_(msg_ids)).delete(synchronize_session=False)
+        db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete(synchronize_session=False)
+
+    # 清理会话 FAISS 索引文件
+    for suffix in (".faiss", ".pkl"):
+        p = FAISS_DIR / f"session_{session_id}{suffix}"
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    # 兼容旧路径字段
+    if session.faiss_index_path:
+        base = Path(session.faiss_index_path)
+        for candidate in (base.with_suffix(".faiss"), base.with_suffix(".pkl"), Path(str(base) + ".faiss"), Path(str(base) + ".pkl")):
+            if candidate.exists():
+                try:
+                    candidate.unlink()
+                except OSError:
+                    pass
+
+    db.delete(session)
+    db.commit()
+    return _ok({"id": session_id}, "会话已删除")
+
+
+@router.get("/messages/{session_id}")
 def get_messages(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
@@ -217,21 +262,17 @@ def get_messages(session_id: int, current_user: User = Depends(get_current_user)
     for msg in messages:
         out = MessageOut.model_validate(msg)
         if msg.role == "assistant":
-            fb = (
-                db.query(ChatFeedback)
-                .filter(ChatFeedback.message_id == msg.id)
-                .first()
-            )
-            if fb:
-                out.feedback = fb.feedback_type
-        result.append(out)
-    return result
+            fb = db.query(ChatFeedback).filter(ChatFeedback.message_id == msg.id).first()
+            if fb: out.feedback = fb.feedback_type
+        result.append(out.model_dump())
+    return _ok(result)
 
 
 @router.post("/upload")
 async def upload_document(
     session_id: int = Form(...),
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
@@ -261,15 +302,14 @@ async def upload_document(
         session.title = Path(file.filename).stem[:50]
     db.commit()
 
-    return {
-        "message": "文档上传成功，FAISS 索引已建立",
+    return _ok({
         "session_id": session_id,
         "doc_name": file.filename,
         "chunks": len(chunks),
-    }
+    }, "文档上传成功，FAISS 索引已建立")
 
 
-@router.post("/message", response_model=MessageResponse)
+@router.post("/message")
 async def send_message(body: MessageCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = db.query(ChatSession).filter(ChatSession.id == body.session_id).first()
     if not session:
@@ -307,6 +347,11 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
     else:
         search_query = translated or body.content
         contexts = retrieve_context(body.session_id, search_query)
+        # LIKE 备选（成员5二轮优化）
+        if len(contexts) < 3:
+            for faq in search_products_like(db, search_query, limit=5):
+                if faq not in contexts:
+                    contexts.append(faq)
         # 翻译结果里的 product_type 再补一轮
         if translated:
             import re as _re
@@ -344,14 +389,14 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
 
     refresh_daily_stats(db)
 
-    return MessageResponse(
-        user_message=MessageOut.model_validate(user_msg),
-        assistant_message=MessageOut.model_validate(assistant_msg),
-        sources=contexts[:3],
-    )
+    return _ok({
+        "user_message": MessageOut.model_validate(user_msg).model_dump(),
+        "assistant_message": MessageOut.model_validate(assistant_msg).model_dump(),
+        "sources": contexts[:3],
+    }, "回复成功")
 
 
-@router.post("/feedback", response_model=FeedbackOut)
+@router.post("/feedback")
 def submit_feedback(body: FeedbackCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     msg = db.query(ChatMessage).filter(ChatMessage.id == body.message_id).first()
     if not msg or msg.role != "assistant":
@@ -367,16 +412,13 @@ def submit_feedback(body: FeedbackCreate, current_user: User = Depends(get_curre
     )
     if existing:
         existing.feedback_type = body.feedback_type
-        db.commit()
-        db.refresh(existing)
-        return existing
+        db.commit(); db.refresh(existing)
+        return _ok(FeedbackOut.model_validate(existing).model_dump())
 
     fb = ChatFeedback(
         message_id=body.message_id,
         user_id=current_user.id,
         feedback_type=body.feedback_type,
     )
-    db.add(fb)
-    db.commit()
-    db.refresh(fb)
-    return fb
+    db.add(fb); db.commit(); db.refresh(fb)
+    return _ok(FeedbackOut.model_validate(fb).model_dump(), "反馈成功")

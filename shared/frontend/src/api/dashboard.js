@@ -9,13 +9,19 @@ export function getDashboardTrend() {
 }
 
 export function getDashboardAdvice() {
-  return request.get('/dashboard/advice')
+  return request.get('/dashboard/advice', { timeout: 60000 })
 }
 
 export function exportDashboardExcel() {
-  window.open('/api/dashboard/export/excel', '_blank')
+  return request.get('/dashboard/export/excel', {
+    responseType: 'blob',
+    timeout: 60000,
+  })
 }
 
 export function exportDashboardPdf() {
-  window.open('/api/dashboard/export/pdf', '_blank')
+  return request.get('/dashboard/export/pdf', {
+    responseType: 'blob',
+    timeout: 60000,
+  })
 }
