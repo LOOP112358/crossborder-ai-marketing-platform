@@ -11,12 +11,12 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 FAISS_DIR = DATA_DIR / "faiss"
 DB_PATH = DATA_DIR / "chat_kb.db"
 
-# 本地 ABO 知识库（默认指向你 Downloads 中的解压目录，可用环境变量覆盖）
+# ABO 知识库路径（优先环境变量，默认使用项目根目录下的 data/static）
 ABO_LISTINGS_DIR = Path(
-    os.getenv("ABO_LISTINGS_DIR", r"C:\Users\lishu\Downloads\abo-listings")
+    os.getenv("ABO_LISTINGS_DIR", str(MODULE5_ROOT / "data"))
 )
 ABO_IMAGES_DIR = Path(
-    os.getenv("ABO_IMAGES_DIR", r"C:\Users\lishu\Downloads\abo-images-small")
+    os.getenv("ABO_IMAGES_DIR", str(MODULE5_ROOT / "static"))
 )
 ABO_METADATA_DIR = ABO_LISTINGS_DIR / "listings" / "metadata"
 ABO_IMAGES_SMALL_DIR = ABO_IMAGES_DIR / "images" / "small"

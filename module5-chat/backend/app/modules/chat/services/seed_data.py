@@ -224,7 +224,10 @@ def seed_if_empty() -> None:
         # 只导入 ABO 知识库商品，不再填充假统计数据
         # 看板数据完全由 refresh_daily_stats 从真实调用记录中汇总
         count = _import_abo_products(db)
-        _rebuild_abo_index(db)
+        # 数据量大时跳过全局 FAISS 重建，避免 OOM
+        # 检索走 product_type 精确匹配 + 会话级 FAISS
+        if count < 5000:
+            _rebuild_abo_index(db)
         print(f"[seed] ABO 知识库已就绪，共 {count} 条商品")
     finally:
         db.close()

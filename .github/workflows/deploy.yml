@@ -18,7 +18,8 @@ jobs:
             set -e
             cd /opt/crossborder-ai
             echo "[1/5] Pull latest code..."
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "[2/5] Update Python dependencies..."
             source venv/bin/activate
