@@ -14,18 +14,6 @@ from app.modules.chat.services.document_parser import parse_document, chunk_text
 from app.modules.chat.services.rag_service import build_session_index, retrieve_context
 from app.modules.chat.services.llm_service import generate_bilingual_reply
 from app.modules.chat.services.stats_service import refresh_daily_stats
-<<<<<<< HEAD
-from app.modules.chat.services.search_service import search_products_like
-from app.modules.chat.services.product_search import (
-    detect_product_types,
-    local_english_keywords,
-    search_products_by_type,
-    search_products_by_keywords,
-    format_product_answer,
-    resolve_language,
-)
-=======
->>>>>>> ed64506cb782760f1bff182dc0731b7ac47b30b0
 
 _FALLBACK_USER_ID = 1
 
@@ -256,27 +244,8 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
     translated = ""
     if any("一" <= c <= "鿿" for c in body.content):
         translated = await _translate_query_for_search(body.content, history)
-<<<<<<< HEAD
-    if translated and not products:
-        products = search_products_by_keywords(db, translated, limit=8)
-
-    # 3) FAISS 仅作补充（中文直接搜英文库效果差，有品类命中时不再用它污染结果）
-    contexts: list[str] = []
-    if products:
-        contexts = [p.faq_text for p in products if p.faq_text]
-    else:
-        search_query = translated or body.content
-        contexts = retrieve_context(body.session_id, search_query)
-        # LIKE 备选（成员5二轮优化）
-        if len(contexts) < 3:
-            for faq in search_products_like(db, search_query, limit=5):
-                if faq not in contexts:
-                    contexts.append(faq)
-        # 翻译结果里的 product_type 再补一轮
-=======
->>>>>>> ed64506cb782760f1bff182dc0731b7ac47b30b0
-        if translated:
-            search_query = translated
+    if translated:
+        search_query = translated
 
     # FAISS 向量检索（主）
     contexts = retrieve_context(body.session_id, search_query)

@@ -233,11 +233,13 @@ async function onCatalogPick(id) {
   originalPreview.value = p.image_url || ''
   result.value = null
   resultImageUrl.value = ''
+  // 换品后旧抠图失效，避免带着上一件商品的图去贴新文案
+  appStore.setMatteResult('', p.category || '', p.category_en || p.product_type || '', 0, null)
   try {
     const data = await getPosterCopy(id, 'zh')
     appStore.setSelectedProduct(data.product, data.poster_copy)
     catalogProduct.value = data.product
-    ElMessage.success('已选库内商品，请点击「对库内主图抠图」')
+    ElMessage.success('已选库内商品，请点击「对库内主图抠图」（图文将绑定同一商品）')
   } catch {
     appStore.setSelectedProduct(p)
   }
@@ -259,8 +261,22 @@ async function matteCatalogProduct() {
     result.value = data
     resultImageUrl.value = data.matted_url
     originalPreview.value = data.original_url || catalogProduct.value.image_url
-    appStore.setMatteResult(data.matted_url, data.category, data.category_en, data.confidence)
-    ElMessage.success('抠图完成，可进入背景生成 / 海报合成')
+    const pid = catalogProduct.value.id
+    appStore.setMatteResult(
+      data.matted_url,
+      data.category || catalogProduct.value.category || '',
+      data.category_en || catalogProduct.value.category_en || catalogProduct.value.product_type || '',
+      data.confidence,
+      pid,
+    )
+    // 抠图完成时再确认一次文案与当前商品一致
+    try {
+      const copyData = await getPosterCopy(pid, 'zh')
+      appStore.setSelectedProduct(copyData.product, copyData.poster_copy)
+    } catch {
+      /* keep existing */
+    }
+    ElMessage.success('抠图完成，图文已绑定当前商品，可进入背景 / 海报')
   } catch {
     // handled
   } finally {
@@ -287,8 +303,11 @@ async function processMatte() {
     const data = await processMatteApi(form)
     result.value = data
     resultImageUrl.value = data.matted_url
-    appStore.setMatteResult(data.matted_url, data.category, data.category_en, data.confidence)
-    ElMessage.success('抠图与识别完成')
+    // 本地上传抠图：清空库内选品，避免旧商品文案串到新图上
+    appStore.setSelectedProduct(null)
+    appStore.clearPosterConfig()
+    appStore.setMatteResult(data.matted_url, data.category, data.category_en, data.confidence, null)
+    ElMessage.success('抠图与识别完成（本地上传，请手动填写海报文案）')
   } catch {
     // handled
   } finally {

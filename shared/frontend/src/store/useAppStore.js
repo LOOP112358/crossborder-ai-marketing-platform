@@ -14,6 +14,8 @@ export const useAppStore = defineStore('app', () => {
   const selectedProductId = ref(null)
   const selectedProduct = ref(null)
   const productImageUrl = ref('')
+  /** 与当前抠图结果绑定的商品 id，用于防止图文串货 */
+  const mattedProductId = ref(null)
 
   // 成员3：双模型背景（默认优先 Seedream 场景图）
   const seedreamBgUrl = ref('')
@@ -32,11 +34,27 @@ export const useAppStore = defineStore('app', () => {
     price: '',
   })
 
-  function setMatteResult(url, cat, catEn, conf) {
+  function clearPosterConfig() {
+    posterConfig.value = {
+      templateId: null,
+      title: '',
+      subtitle: '',
+      selling_point_1: '',
+      selling_point_2: '',
+      cta_text: '',
+      discount: '',
+      price: '',
+    }
+  }
+
+  function setMatteResult(url, cat, catEn, conf, productId = undefined) {
     mattedUrl.value = url
     category.value = cat
     categoryEn.value = catEn
     confidence.value = conf
+    if (productId !== undefined) {
+      mattedProductId.value = productId
+    }
   }
 
   function setSelectedProduct(product, posterCopy = null) {
@@ -44,7 +62,6 @@ export const useAppStore = defineStore('app', () => {
     selectedProductId.value = product?.id ?? null
     productImageUrl.value = product?.image_url || ''
     if (product) {
-      // 优先用库内品类；避免误判品类覆盖正确信息
       if (product.category) category.value = product.category
       categoryEn.value = product.category_en || product.product_type || categoryEn.value
     }
@@ -72,14 +89,27 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function setPosterConfig(config) {
-    posterConfig.value = { ...posterConfig.value, ...config }
+    const cleaned = { ...config }
+    ;['title', 'subtitle', 'selling_point_1', 'selling_point_2', 'cta_text', 'discount', 'price'].forEach((k) => {
+      if (typeof cleaned[k] === 'string') {
+        cleaned[k] = cleaned[k].replace(/[…]+$/g, '').replace(/\.{3,}$/g, '').trim()
+      }
+    })
+    posterConfig.value = { ...posterConfig.value, ...cleaned }
+  }
+
+  /** 图文是否仍指向同一商品 */
+  function isPosterCopyInSync() {
+    if (!mattedProductId.value || !selectedProductId.value) return true
+    return Number(mattedProductId.value) === Number(selectedProductId.value)
   }
 
   return {
     mattedUrl, category, categoryEn, confidence,
-    selectedProductId, selectedProduct, productImageUrl,
+    selectedProductId, selectedProduct, productImageUrl, mattedProductId,
     seedreamBgUrl, enhancedBgUrl, preferredBgUrl, bgStyle,
     posterConfig,
-    setMatteResult, setSelectedProduct, setBackgroundResult, chooseBackground, setPosterConfig,
+    setMatteResult, setSelectedProduct, setBackgroundResult, chooseBackground,
+    setPosterConfig, clearPosterConfig, isPosterCopyInSync,
   }
 })

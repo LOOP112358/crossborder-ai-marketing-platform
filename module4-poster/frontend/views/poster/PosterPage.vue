@@ -33,12 +33,28 @@
           <el-input v-model="form.bg_url" placeholder="/static/.../background.png" size="small" style="margin-top:4px" />
 
           <h4 class="section-title">文案内容</h4>
+          <el-alert
+            v-if="copyMismatch"
+            type="error"
+            :closable="false"
+            show-icon
+            style="margin-bottom:10px"
+            title="图文可能不一致：当前抠图与文案商品不是同一件。请点「使用库内商品文案」同步，或回到第1步重新选品抠图。"
+          />
+          <el-alert
+            v-else-if="boundProductLabel"
+            type="success"
+            :closable="false"
+            show-icon
+            style="margin-bottom:10px"
+            :title="`当前绑定商品：${boundProductLabel}`"
+          />
           <p class="hint">库内字段可即时填入；「AI 精炼」会用知识库卖点 + DeepSeek 压成适合叠字的短句。</p>
           <div class="action-row" style="margin-top:0;margin-bottom:8px">
-            <el-button type="warning" @click="fillFromCatalog" :disabled="!appStore.selectedProductId && !appStore.posterConfig.title">
+            <el-button type="warning" @click="fillFromCatalog" :disabled="!appStore.selectedProductId && !appStore.mattedProductId && !appStore.posterConfig.title">
               使用库内商品文案
             </el-button>
-            <el-button type="primary" plain :loading="refiningCopy" @click="refineWithAI" :disabled="!appStore.selectedProductId">
+            <el-button type="primary" plain :loading="refiningCopy" @click="refineWithAI" :disabled="!copyProductId">
               AI 精炼短文案
             </el-button>
             <el-button @click="fillChineseDemo">填入中文示例</el-button>
@@ -168,7 +184,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import request from '@/api/request'
 import { getPosterCopy } from '@/api/writing'
 import { useAppStore } from '@/store/useAppStore'
@@ -182,6 +198,20 @@ const statusMsg = ref('')
 const templates = ref([])
 const listItems = ref([])
 const openPanels = ref(['title'])
+
+/** 优先用「抠图绑定」的商品 id，保证图文同源 */
+const copyProductId = computed(() => appStore.mattedProductId || appStore.selectedProductId)
+const copyMismatch = computed(() => {
+  if (!appStore.mattedProductId || !appStore.selectedProductId) return false
+  return Number(appStore.mattedProductId) !== Number(appStore.selectedProductId)
+})
+const boundProductLabel = computed(() => {
+  const p = appStore.selectedProduct
+  if (!p) return ''
+  const name = p.name || p.item_name || p.label || ''
+  const brand = p.brand || ''
+  return [brand, name].filter(Boolean).join(' · ').slice(0, 80)
+})
 
 const fonts = [
   { v: 'msyh', l: '微软雅黑' },
@@ -305,6 +335,10 @@ async function composePoster() {
     ElMessage.warning('请输入商品图和背景图 URL')
     return
   }
+  if (copyMismatch.value) {
+    ElMessage.error('图文商品不一致，请先点「使用库内商品文案」同步，或回第1步重新抠图')
+    return
+  }
   if (form.matted_url.includes('/static/abo-images/')) {
     ElMessage.error('当前商品图还是库内原图（带白底）。请回到第1步完成抠图后再合成。')
     return
@@ -385,47 +419,59 @@ function fillChineseDemo() {
   form.cta_text = '立即购买'
 }
 
+function cleanCopyText(s) {
+  return String(s || '')
+    .replace(/[…]+$/g, '')
+    .replace(/\.{3,}$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function applyPosterCopy(copy) {
   if (!copy) return
-  form.title = copy.title || form.title
-  form.subtitle = copy.subtitle || form.subtitle
-  form.selling_point_1 = copy.selling_point_1 || form.selling_point_1
-  form.selling_point_2 = copy.selling_point_2 || form.selling_point_2
-  form.cta_text = copy.cta_text || form.cta_text
-  form.discount = copy.discount || form.discount
-  form.price = copy.price || copy.cta_text || form.price
+  form.title = cleanCopyText(copy.title) || form.title
+  form.subtitle = cleanCopyText(copy.subtitle) || form.subtitle
+  form.selling_point_1 = cleanCopyText(copy.selling_point_1) || form.selling_point_1
+  form.selling_point_2 = cleanCopyText(copy.selling_point_2) || form.selling_point_2
+  form.cta_text = cleanCopyText(copy.cta_text) || form.cta_text
+  form.discount = cleanCopyText(copy.discount) || form.discount
+  form.price = cleanCopyText(copy.price || copy.cta_text) || form.price
 }
 
 async function fillFromCatalog() {
-  if (!appStore.selectedProductId && appStore.posterConfig?.title) {
-    applyPosterCopy(appStore.posterConfig)
-    if (appStore.mattedUrl) form.matted_url = appStore.mattedUrl
-    if (appStore.preferredBgUrl || appStore.enhancedBgUrl) {
-      form.bg_url = appStore.preferredBgUrl || appStore.enhancedBgUrl
+  const pid = copyProductId.value
+  if (!pid) {
+    if (appStore.posterConfig?.title) {
+      applyPosterCopy(appStore.posterConfig)
+      ElMessage.warning('当前为缓存文案；建议回到抠图步骤重新选品，保证图文一致')
+      return
     }
-    ElMessage.success('已填入库内商品海报文案')
-    return
-  }
-  if (!appStore.selectedProductId) {
-    ElMessage.warning('请先在「商品抠图」步骤从商品库选品')
+    ElMessage.warning('请先在「商品抠图」步骤从商品库选品并抠图')
     return
   }
   try {
-    const data = await getPosterCopy(appStore.selectedProductId, 'zh', false)
+    const data = await getPosterCopy(pid, 'zh', false)
     appStore.setSelectedProduct(data.product, data.poster_copy)
+    // 若已有抠图，强制把文案商品对齐到抠图商品
+    if (appStore.mattedProductId && Number(appStore.mattedProductId) !== Number(pid)) {
+      ElMessage.warning('已按抠图绑定商品刷新文案')
+    }
     applyPosterCopy(data.poster_copy)
-    ElMessage.success('已根据商品库生成海报文案')
-  } catch {}
+    ElMessage.success(`已填入「${boundProductLabel.value || data.product?.name || '当前商品'}」文案`)
+  } catch (e) {
+    ElMessage.error('拉取文案失败：' + (e?.message || ''))
+  }
 }
 
 async function refineWithAI() {
-  if (!appStore.selectedProductId) {
-    ElMessage.warning('请先从商品库选品')
+  const pid = copyProductId.value
+  if (!pid) {
+    ElMessage.warning('请先从商品库选品并抠图')
     return
   }
   refiningCopy.value = true
   try {
-    const data = await getPosterCopy(appStore.selectedProductId, 'zh', true)
+    const data = await getPosterCopy(pid, 'zh', true)
     appStore.setSelectedProduct(data.product, data.poster_copy)
     applyPosterCopy(data.poster_copy)
     const src = data.poster_copy?.source === 'kb+llm' ? '知识库 + DeepSeek' : '知识库规则（LLM 未就绪，已回退）'
@@ -462,7 +508,7 @@ function useWhiteStyle() {
   openPanels.value = ['title', 'subtitle']
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadTemplates()
   loadHistory()
   // 优先使用第1步抠图结果
@@ -474,7 +520,18 @@ onMounted(() => {
     form.matted_url = ''
   }
   form.bg_url = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl || form.bg_url
-  if (appStore.posterConfig?.title) applyPosterCopy(appStore.posterConfig)
+  // 有抠图绑定商品时，强制用该商品文案，避免串货
+  if (appStore.mattedProductId) {
+    try {
+      const data = await getPosterCopy(appStore.mattedProductId, 'zh', false)
+      appStore.setSelectedProduct(data.product, data.poster_copy)
+      applyPosterCopy(data.poster_copy)
+    } catch {
+      if (appStore.posterConfig?.title) applyPosterCopy(appStore.posterConfig)
+    }
+  } else if (appStore.posterConfig?.title) {
+    applyPosterCopy(appStore.posterConfig)
+  }
 })
 
 watch(

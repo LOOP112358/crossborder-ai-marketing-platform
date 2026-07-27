@@ -139,11 +139,19 @@ def serialize_product(p: AboProduct) -> Dict[str, Any]:
     }
 
 
-def _clip(text: str, n: int) -> str:
+def _clip(text: str, n: int, ellipsis: bool = False) -> str:
+    """按长度裁剪；英文在空格处断开，避免 Darjeeling Te… 这种半词。"""
     text = (text or "").strip()
     if len(text) <= n:
         return text
-    return text[: max(1, n - 1)] + "…"
+    cut = text[:n]
+    has_cjk = any("\u4e00" <= c <= "\u9fff" for c in cut)
+    if not has_cjk and " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    cut = cut.rstrip(" .,;:|-–—/")
+    if not cut:
+        cut = text[: max(1, n - (1 if ellipsis else 0))]
+    return f"{cut}…" if ellipsis else cut
 
 
 def _sanitize_copy_text(text: str) -> str:
@@ -179,16 +187,16 @@ def _short_title_from_name(name: str, brand: str, language: str) -> str:
         raw = raw[len(brand) :].lstrip(" ··-–—:")
     raw = re.split(r"[，,。；（(]", raw)[0].strip()
     raw = re.sub(r"\d+(\.\d+)?\s*(厘米|cm|英寸|inch|mm)\b.*$", "", raw, flags=re.I).strip()
-    # 英文标题放宽，避免 Darjeeling Te… 这种半词截断；布局侧再换行
-    limit = 28 if language != "en" else 42
-    return _clip(raw or name, limit)
+    # 海报标题交给排版换行，这里只做软裁剪且不打断英文单词、不加省略号
+    limit = 40 if language != "en" else 56
+    return _clip(raw or name, limit, ellipsis=False)
 
 
 def _infer_category_zh(p: AboProduct) -> str:
     """优先从商品名推断品类，避免 ABO product_type 误标。"""
     name = f"{display_name(p)} {(p.item_name or '')}".lower()
     hints = [
-        (("parmesan", "cheese", "奶酪", "芝士", "butter", "黄油", "snack", "零食", "coffee", "咖啡"), "食品"),
+        (("parmesan", "cheese", "奶酪", "芝士", "butter", "黄油", "snack", "零食", "coffee", "咖啡", "tea", "茶叶", "darjeeling"), "食品"),
         (("earbud", "earphone", "headphone", "耳机", "蓝牙耳机"), "耳机"),
         (("chair", "椅子", "sofa", "沙发", "table", "茶几", "桌子"), "家具"),
         (("kettle", "水壶", "thermos", "保温杯"), "家居日用"),
@@ -218,7 +226,7 @@ def build_poster_copy(p: AboProduct, language: str = "zh") -> Dict[str, str]:
         sp1 = pure[0] if pure else (p.color or "Quality Materials")
         sp2 = pure[1] if len(pure) > 1 else (p.material or _infer_category_zh(p) or "Everyday Essential")
         cta = "Shop Now"
-        subtitle, sp1, sp2 = _clip(subtitle, 40), _clip(sp1, 48), _clip(sp2, 48)
+        subtitle, sp1, sp2 = _clip(subtitle, 48, False), _clip(sp1, 64, False), _clip(sp2, 64, False)
     else:
         cat = _infer_category_zh(p)
         if brand and cat:
@@ -227,7 +235,7 @@ def build_poster_copy(p: AboProduct, language: str = "zh") -> Dict[str, str]:
             subtitle = brand or cat or (p.color or "精选好物")
         sp1 = pure[0] if pure else (p.color or "品质精选")
         sp2 = pure[1] if len(pure) > 1 else ((p.material or cat) or "热销推荐")
-        subtitle, sp1, sp2 = _clip(subtitle, 36), _clip(sp1, 40), _clip(sp2, 40)
+        subtitle, sp1, sp2 = _clip(subtitle, 40, False), _clip(sp1, 56, False), _clip(sp2, 56, False)
         cta = "立即选购"
     return {
         "title": _sanitize_copy_text(title),
@@ -306,11 +314,11 @@ async def refine_poster_copy_with_llm(
                 content = content.split("\n", 1)[-1].rsplit("\n```", 1)[0]
             data = json.loads(content)
             out = {
-                "title": _clip(str(data.get("title") or base["title"]), 36 if language != "en" else 48),
-                "subtitle": _clip(str(data.get("subtitle") or base["subtitle"]), 40 if language != "en" else 56),
-                "selling_point_1": _clip(str(data.get("selling_point_1") or base["selling_point_1"]), 48),
-                "selling_point_2": _clip(str(data.get("selling_point_2") or base["selling_point_2"]), 48),
-                "cta_text": _clip(str(data.get("cta_text") or base["cta_text"]), 10 if language != "en" else 14),
+                "title": _clip(str(data.get("title") or base["title"]), 48, False),
+                "subtitle": _clip(str(data.get("subtitle") or base["subtitle"]), 56, False),
+                "selling_point_1": _clip(str(data.get("selling_point_1") or base["selling_point_1"]), 64, False),
+                "selling_point_2": _clip(str(data.get("selling_point_2") or base["selling_point_2"]), 64, False),
+                "cta_text": _clip(str(data.get("cta_text") or base["cta_text"]), 12, False),
                 "discount": "",
                 "price": "",
                 "source": "kb+llm",
