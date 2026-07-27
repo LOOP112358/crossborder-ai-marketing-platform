@@ -1,0 +1,100 @@
+name: Backfill ABO images (full)
+
+# 数据已在 /opt/abo-data 时：全量挂图（不重下 3GB）。
+# 把磁盘上确有 jpg 的商品尽量导入/回填，供客服与选品展示真实主图。
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill-full:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Full image backfill on server
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 152.136.27.117
+          username: root
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          command_timeout: 180m
+          script: |
+            set -euo pipefail
+            APP_DIR=/opt/crossborder-ai
+            DATA_DIR=/opt/abo-data
+
+            echo "[0] Check ABO data + memory"
+            ls -ld "$DATA_DIR/listings/metadata" "$DATA_DIR/images/small" || {
+              echo "ERROR: ABO data missing under $DATA_DIR — run Setup ABO dataset first"
+              exit 1
+            }
+            free -h || true
+            if ! swapon --show | grep -q .; then
+              if [ ! -f /swapfile ]; then
+                fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+                chmod 600 /swapfile
+                mkswap /swapfile
+              fi
+              swapon /swapfile || true
+            fi
+
+            echo "[1] Pull latest import scripts"
+            cd "$APP_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+            # shellcheck disable=SC1091
+            source venv/bin/activate
+
+            # 确保 .env 指向 ABO 数据
+            ENV_FILE="$APP_DIR/.env"
+            touch "$ENV_FILE"
+            tmp=$(mktemp)
+            grep -Ev '^(ABO_LISTINGS_DIR|ABO_IMAGES_DIR|ABO_IMPORT_LIMIT)=' "$ENV_FILE" > "$tmp" || true
+            {
+              echo "ABO_LISTINGS_DIR=$DATA_DIR"
+              echo "ABO_IMAGES_DIR=$DATA_DIR"
+              echo "ABO_IMPORT_LIMIT=0"
+            } >> "$tmp"
+            mv "$tmp" "$ENV_FILE"
+
+            echo "[2] Stop app to free RAM"
+            systemctl stop crossborder.service || true
+            sleep 2
+            sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+            free -h || true
+
+            echo "[3] Rebuild image_id SQLite index (stream, low memory)"
+            python scripts/import_abo_kb.py --rebuild-image-index
+
+            echo "[4] Backfill existing products with on-disk jpgs"
+            python scripts/import_abo_kb.py --backfill-images
+
+            echo "[5] Import ALL listings that have real jpgs on disk (no 3000 cap)"
+            python scripts/import_abo_kb.py --import-with-images --limit 0
+
+            echo "[6] Skip full FAISS rebuild (too heavy); type/keyword search still works"
+            free -h || true
+
+            echo "[7] Restart"
+            systemctl start crossborder.service
+            sleep 4
+            systemctl is-active --quiet crossborder.service
+            nginx -s reload || true
+            curl -fsS "http://127.0.0.1:8000/api/health"
+            echo
+
+            python - <<'PY'
+            from app.core.database import SessionLocal, init_db
+            from app.models.chat import AboProduct
+            init_db()
+            db = SessionLocal()
+            total = db.query(AboProduct).count()
+            with_img = db.query(AboProduct).filter(
+                AboProduct.image_path.isnot(None), AboProduct.image_path != ""
+            ).count()
+            hp = db.query(AboProduct).filter(
+                AboProduct.product_type.ilike("%HEADPHONE%"),
+                AboProduct.image_path.isnot(None),
+                AboProduct.image_path != "",
+            ).count()
+            print(f"DONE products={total} with_image={with_img} headphones_with_image={hp}")
+            db.close()
+            PY

@@ -194,8 +194,15 @@ def load_image_id_map() -> None:
     ensure_image_id_db()
 
 
-def resolve_image_fields(main_image_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """返回 (main_image_id, image_path, image_url)。"""
+def resolve_image_fields(
+    main_image_id: Optional[str],
+    *,
+    require_file: bool = False,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """返回 (main_image_id, image_path, image_url)。
+
+    require_file=True 时仅当 jpg 实际存在于 images/small 才返回 path（用于全量挂图）。
+    """
     if not main_image_id:
         return None, None, None
     mid = str(main_image_id).strip()
@@ -209,6 +216,8 @@ def resolve_image_fields(main_image_id: Optional[str]) -> Tuple[Optional[str], O
         return mid, None, None
     disk = ABO_IMAGES_SMALL_DIR / path
     if not disk.exists():
+        if require_file:
+            return mid, None, None
         return mid, path, None
     url = f"/static/abo-images/images/small/{path}"
     return mid, path, url
@@ -252,7 +261,7 @@ def _build_faq(record: dict, *, resolve_images: bool = True) -> dict:
     main_image_id = record.get("main_image_id") or ""
     image_path = None
     if resolve_images:
-        _, image_path, _ = resolve_image_fields(main_image_id)
+        _, image_path, _ = resolve_image_fields(main_image_id, require_file=True)
 
     faq_text = "\n".join(
         [
@@ -384,20 +393,40 @@ def _rebuild_faiss(db: Session) -> None:
 
 
 def backfill_abo_images(db: Session) -> int:
-    """为已有商品按 listings 回填 main_image_id / image_path。"""
+    """为已有商品按 listings / main_image_id 回填图片路径（要求 jpg 在磁盘上）。"""
     load_image_id_map()
     metadata_dir = ABO_METADATA_DIR
     if not metadata_dir.exists():
         print(f"[warn] ABO metadata 不存在: {metadata_dir}")
         return 0
 
+    # Pass 1：已有 main_image_id 的直接解析（不依赖再扫 listings）
+    updated = 0
+    checked = 0
+    print("[abo] Pass1: 按已有 main_image_id 挂图…")
+    q = db.query(AboProduct).yield_per(300)
+    for p in q:
+        mid = (p.main_image_id or "").strip()
+        if not mid:
+            continue
+        checked += 1
+        _, path, _ = resolve_image_fields(mid, require_file=True)
+        if path and p.image_path != path:
+            p.image_path = path
+            updated += 1
+            if updated % 500 == 0:
+                db.commit()
+                print(f"  Pass1 已更新 {updated} 条…")
+    db.commit()
+    print(f"[abo] Pass1 完成：检查 {checked}，更新 {updated}")
+
     products = {p.item_id: p for p in db.query(AboProduct).all()}
     if not products:
         print("[abo] 库中无商品，跳过回填")
-        return 0
+        return updated
 
-    updated = 0
-    checked = 0
+    # Pass 2：扫 listings，补 main_image_id + 实图 path
+    print("[abo] Pass2: 扫描 listings 回填…")
     for fp in sorted(metadata_dir.glob("listings_*.json.gz")):
         print(f"[abo] 回填扫描: {fp.name}")
         with gzip.open(fp, "rt", encoding="utf-8") as f:
@@ -415,7 +444,7 @@ def backfill_abo_images(db: Session) -> int:
                     continue
                 checked += 1
                 mid = record.get("main_image_id") or ""
-                _, path, _ = resolve_image_fields(mid)
+                _, path, _ = resolve_image_fields(mid, require_file=True)
                 changed = False
                 if mid and p.main_image_id != mid:
                     p.main_image_id = mid
@@ -423,7 +452,6 @@ def backfill_abo_images(db: Session) -> int:
                 if path and p.image_path != path:
                     p.image_path = path
                     changed = True
-                # 补颜色等若为空
                 if not p.color:
                     c = _pick_lang(record.get("color", []))
                     if c:
@@ -431,13 +459,103 @@ def backfill_abo_images(db: Session) -> int:
                         changed = True
                 if changed:
                     updated += 1
-                if updated and updated % 200 == 0:
+                if updated and updated % 500 == 0:
                     db.commit()
-                    print(f"  已更新 {updated} 条...")
+                    print(f"  Pass2 已更新 {updated} 条…")
     db.commit()
-    with_img = db.query(AboProduct).filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "").count()
-    print(f"[abo] 回填完成：扫描命中 {checked}，更新 {updated}，当前有图 {with_img}/{len(products)}")
+    with_img = (
+        db.query(AboProduct)
+        .filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "")
+        .count()
+    )
+    print(f"[abo] 回填完成：累计检查/更新相关 {checked}/{updated}，当前有图 {with_img}/{len(products)}")
     return updated
+
+
+def import_products_with_images(db: Session, limit: int = 0) -> int:
+    """
+    从 listings 导入「磁盘上确有 jpg」的商品；limit<=0 表示不设上限。
+    用于把 3GB images-small 尽量挂满到可展示商品上。
+    """
+    load_image_id_map()
+    metadata_dir = ABO_METADATA_DIR
+    if not metadata_dir.exists():
+        print(f"[warn] ABO metadata 目录不存在: {metadata_dir}")
+        return 0
+
+    files = sorted(metadata_dir.glob("listings_*.json.gz"))
+    if not files:
+        print(f"[warn] 未找到 listings_*.json.gz 于 {metadata_dir}")
+        return 0
+
+    existing = {r[0] for r in db.query(AboProduct.item_id).all()}
+    imported = 0
+    skipped_no_image = 0
+    seen_ids = set(existing)
+    unlimited = limit <= 0
+
+    for fp in files:
+        print(f"[abo] 有图导入: {fp.name}")
+        with gzip.open(fp, "rt", encoding="utf-8") as f:
+            for line in f:
+                if not unlimited and imported >= limit:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                item_id = record.get("item_id")
+                if not item_id or item_id in seen_ids:
+                    continue
+                mid = record.get("main_image_id") or ""
+                _, path, _ = resolve_image_fields(mid, require_file=True)
+                if not path:
+                    skipped_no_image += 1
+                    continue
+                data = _build_faq(record, resolve_images=False)
+                if not data["item_name"]:
+                    continue
+                data["main_image_id"] = mid or None
+                data["image_path"] = path
+                db.add(
+                    AboProduct(
+                        item_id=data["item_id"],
+                        item_name=data["item_name"],
+                        item_name_zh=data["item_name_zh"],
+                        brand=data["brand"],
+                        brand_zh=data["brand_zh"],
+                        product_type=data["product_type"],
+                        bullet_points=data["bullet_points"],
+                        material=data["material"],
+                        color=data["color"],
+                        main_image_id=data["main_image_id"],
+                        image_path=data["image_path"],
+                        faq_text=data["faq_text"],
+                    )
+                )
+                seen_ids.add(item_id)
+                imported += 1
+                if imported % 300 == 0:
+                    db.commit()
+                    print(f"  已导入有图商品 {imported}（跳过无图 {skipped_no_image}）…")
+        if not unlimited and imported >= limit:
+            break
+
+    db.commit()
+    with_img = (
+        db.query(AboProduct)
+        .filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "")
+        .count()
+    )
+    total = db.query(AboProduct).count()
+    print(
+        f"[abo] 有图导入完成：新增 {imported}，跳过无盘图 {skipped_no_image}，"
+        f"库内有图 {with_img}/{total}"
+    )
+    return imported
 
 
 def main():
@@ -446,6 +564,11 @@ def main():
     parser.add_argument("--limit", type=int, default=ABO_IMPORT_LIMIT)
     parser.add_argument("--rebuild-only", action="store_true", help="只重建 FAISS，不重新读 gzip")
     parser.add_argument("--backfill-images", action="store_true", help="仅为已有商品回填图片路径")
+    parser.add_argument(
+        "--import-with-images",
+        action="store_true",
+        help="只导入磁盘上确有 jpg 的商品；配合 --limit，0=不设上限",
+    )
     parser.add_argument("--skip-index", action="store_true", help="导入时不重建 FAISS（省内存）")
     parser.add_argument("--skip-images", action="store_true", help="导入时不解析图片路径（稍后 --backfill-images）")
     parser.add_argument("--rebuild-image-index", action="store_true", help="强制重建 image_id SQLite 索引")
@@ -460,6 +583,8 @@ def main():
             ensure_image_id_db(force=True)
         elif args.backfill_images:
             backfill_abo_images(db)
+        elif args.import_with_images:
+            import_products_with_images(db, limit=args.limit)
         elif args.rebuild_only:
             _rebuild_faiss(db)
         else:

@@ -4,12 +4,14 @@
   python scripts/import_abo_kb.py --limit 8000
   python scripts/import_abo_kb.py --limit 3000 --skip-images --skip-index
   python scripts/import_abo_kb.py --backfill-images
+  python scripts/import_abo_kb.py --import-with-images --limit 0
   python scripts/import_abo_kb.py --rebuild-only
 
 说明：
-  --backfill-images  用 images.csv(.gz) 给已有商品补 main_image_id / image_path
-  --skip-images      导入时不解析图片（省内存，随后再 backfill）
-  --skip-index       导入时不重建 FAISS（省内存，随后再 rebuild-only）
+  --backfill-images     给已有商品补 main_image_id / image_path（要求 jpg 在盘上）
+  --import-with-images  只导入磁盘上确有 jpg 的商品；--limit 0 = 不设上限
+  --skip-images         导入时不解析图片（省内存，随后再 backfill）
+  --skip-index          导入时不重建 FAISS（省内存，随后再 rebuild-only）
 """
 import os
 import sys

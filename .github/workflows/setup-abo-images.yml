@@ -85,7 +85,7 @@ jobs:
             {
               echo "ABO_LISTINGS_DIR=$DATA_DIR"
               echo "ABO_IMAGES_DIR=$DATA_DIR"
-              echo "ABO_IMPORT_LIMIT=3000"
+              echo "ABO_IMPORT_LIMIT=0"
             } >> "$tmp"
             mv "$tmp" "$ENV_FILE"
             echo "  ABO paths written:"
@@ -104,11 +104,11 @@ jobs:
             # shellcheck disable=SC1091
             source venv/bin/activate
 
-            # 分步：先只导 listings，再建图片索引+回填，最后重建 FAISS
-            python scripts/import_abo_kb.py --limit 3000 --skip-images --skip-index
+            # 全量：重建图片索引 → 回填 → 导入所有有盘图的商品
+            python scripts/import_abo_kb.py --rebuild-image-index
             python scripts/import_abo_kb.py --backfill-images
-            python scripts/import_abo_kb.py --rebuild-only
-
+            python scripts/import_abo_kb.py --import-with-images --limit 0
+            # 大批量时跳过 FAISS 全量重建，避免 OOM；检索仍可用品类/关键词
             echo "[7] Restart backend + nginx..."
             systemctl start crossborder.service
             sleep 4
