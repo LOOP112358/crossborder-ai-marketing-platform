@@ -13,10 +13,6 @@
             <span>库内商品</span>
           </div>
           <div class="stat">
-            <strong>{{ withImage ?? '—' }}</strong>
-            <span>含官方主图</span>
-          </div>
-          <div class="stat">
             <strong>{{ mode === 'browse' ? items.length : campaignItems.length }}</strong>
             <span>{{ mode === 'browse' ? '当前结果' : '方案数' }}</span>
           </div>
@@ -138,8 +134,6 @@
             <div class="thumb" :style="thumbTone(p)">
               <img v-if="p.image_url" :src="p.image_url" :alt="p.name" loading="lazy" @error="onImgError" />
               <span v-else class="fallback">{{ (p.name || '?').slice(0, 1).toUpperCase() }}</span>
-              <span class="badge" v-if="p.has_image">官方图</span>
-              <span class="badge soft" v-else>示意</span>
             </div>
             <div class="body">
               <h3 class="title">{{ p.name }}</h3>
@@ -150,6 +144,23 @@
               <ul v-if="p.feature_list?.length" class="feats">
                 <li v-for="(f, i) in p.feature_list.slice(0, 2)" :key="i">{{ f }}</li>
               </ul>
+              <div class="card-actions" @click.stop>
+                <el-button size="small" class="sketch-btn" @click="selectProduct(p); goWriting()">写文案</el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  class="sketch-btn sketch-btn-primary"
+                  :loading="preparingPoster && selected?.id === p.id"
+                  @click="selectProduct(p); goPoster()"
+                >做海报</el-button>
+                <el-button
+                  size="small"
+                  text
+                  class="similar-btn"
+                  :loading="similarLoading && similarSourceId === p.id"
+                  @click="selectProduct(p); loadSimilar(p)"
+                >相似款</el-button>
+              </div>
             </div>
           </article>
         </div>
@@ -316,10 +327,89 @@
               <span>{{ rec.language }}</span>
               <span v-for="p in rec.platforms.slice(0, 2)" :key="p">{{ p }}</span>
             </div>
+            <div class="card-actions" @click.stop>
+              <el-button size="small" class="sketch-btn" @click="selectCampaignItem(rec)">选中</el-button>
+              <el-button
+                size="small"
+                text
+                class="similar-btn"
+                :loading="similarLoading && similarSourceId === rec.product.id"
+                @click="selectCampaignItem(rec); loadSimilar(rec.product)"
+              >相似款</el-button>
+              <el-button size="small" class="sketch-btn" @click="goCampaignWriting(rec)">写文案</el-button>
+              <el-button
+                size="small"
+                type="primary"
+                class="sketch-btn sketch-btn-primary"
+                :loading="preparingPoster && selected?.id === rec.product.id"
+                @click="goCampaignPoster(rec)"
+              >做海报</el-button>
+            </div>
           </article>
         </div>
       </section>
     </template>
+
+    <!-- 同款延伸 -->
+    <section
+      v-if="similarTried || similarLoading"
+      id="similar-strip"
+      class="similar-section"
+    >
+      <div class="section-head">
+        <h2 class="sketch-title">同款延伸</h2>
+        <p v-if="selected">基于「{{ selected.name }}」</p>
+      </div>
+
+      <div v-if="similarLoading" class="grid">
+        <div v-for="n in 6" :key="'sim-sk-' + n" class="card sketch-card skeleton">
+          <div class="thumb" />
+          <div class="body">
+            <div class="sk-line" />
+            <div class="sk-line short" />
+          </div>
+        </div>
+      </div>
+
+      <el-empty
+        v-else-if="!similarItems.length"
+        :description="similarError || '暂无相似款，换一件商品再试'"
+      />
+
+      <div v-else class="grid">
+        <article
+          v-for="(p, idx) in similarItems"
+          :key="'sim-' + p.id"
+          class="card sketch-card"
+          :class="{ selected: selected?.id === p.id }"
+          :style="{ animationDelay: `${Math.min(idx, 10) * 35}ms` }"
+          @click="selectProduct(p)"
+        >
+          <div class="thumb" :style="thumbTone(p)">
+            <img v-if="p.image_url" :src="p.image_url" :alt="p.name" loading="lazy" @error="onImgError" />
+            <span v-else class="fallback">{{ (p.name || '?').slice(0, 1).toUpperCase() }}</span>
+          </div>
+          <div class="body">
+            <h3 class="title">{{ p.name }}</h3>
+            <div class="meta">
+              <span class="brand">{{ p.brand || '独立品牌' }}</span>
+              <span class="type">{{ p.category }}</span>
+            </div>
+            <div class="card-actions" @click.stop>
+              <el-button size="small" class="sketch-btn" @click="selectProduct(p)">选中</el-button>
+              <el-button size="small" class="sketch-btn" @click="selectProduct(p); goWriting()">写文案</el-button>
+              <el-button
+                size="small"
+                type="primary"
+                class="sketch-btn sketch-btn-primary"
+                :loading="preparingPoster && selected?.id === p.id"
+                @click="selectProduct(p); goPoster()"
+              >做海报</el-button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
 
     <!-- 粘性已选栏 -->
     <Transition name="select-bar">
@@ -334,6 +424,11 @@
           <span>{{ selected.brand || '未知名牌' }} · {{ selected.category }}</span>
         </div>
         <div class="select-bar-actions">
+          <el-button
+            class="sketch-btn similar-btn"
+            :loading="similarLoading"
+            @click="loadSimilar(selected)"
+          >相似款</el-button>
           <el-button class="sketch-btn sketch-btn-primary" type="primary" @click="goWorkflow" :loading="preparingPoster">
             进入文案·海报工作流
           </el-button>
@@ -350,7 +445,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { searchWritingProducts, listProductCategories, getPosterCopy, listCampaigns, recommendCampaign } from '@/api/writing'
+import { searchWritingProducts, listProductCategories, getPosterCopy, listCampaigns, recommendCampaign, getSimilarProducts } from '@/api/writing'
 import { useAppStore } from '@/store/useAppStore'
 
 const RECENT_KEY = 'catalog_recent_v1'
@@ -377,9 +472,13 @@ const preparingPoster = ref(false)
 const items = ref([])
 const categories = ref([])
 const catalogTotal = ref(null)
-const withImage = ref(null)
 const selected = ref(null)
 const recentItems = ref([])
+const similarItems = ref([])
+const similarLoading = ref(false)
+const similarTried = ref(false)
+const similarSourceId = ref(null)
+const similarError = ref('')
 
 const campaigns = ref([])
 const campaignId = ref('back_to_school')
@@ -456,6 +555,59 @@ function clearSelected() {
   selected.value = null
   appStore.setSelectedProduct(null)
   appStore.setCampaignHint(null)
+  similarItems.value = []
+  similarTried.value = false
+  similarSourceId.value = null
+  similarError.value = ''
+}
+
+function similarFailMessage(err) {
+  const data = err?.response?.data
+  if (typeof data?.detail === 'string' && data.detail) return data.detail
+  if (Array.isArray(data?.detail) && data.detail.length) {
+    return data.detail.map((d) => d.msg || d).join('；')
+  }
+  if (typeof data?.message === 'string' && data.message) return data.message
+  if (err?.message && !String(err.message).startsWith('Request failed')) return err.message
+  const status = err?.response?.status
+  if (status === 404) return '相似款接口未找到（需重启后端加载最新路由）'
+  if (status === 401) return '登录已失效，请重新登录'
+  if (status >= 500) return '服务器错误，请稍后重试'
+  return '相似款加载失败'
+}
+
+async function loadSimilar(p) {
+  const target = p || selected.value
+  const productId = target?.id ?? target?.product_id
+  if (!productId) {
+    ElMessage.warning('请先选择一件商品')
+    return
+  }
+  similarLoading.value = true
+  similarTried.value = true
+  similarError.value = ''
+  similarSourceId.value = productId
+  try {
+    const data = await getSimilarProducts(productId, 8)
+    similarItems.value = data.items || []
+    if (!similarItems.value.length) {
+      ElMessage.info('暂无相似款')
+    } else {
+      requestAnimationFrame(() => {
+        document.getElementById('similar-strip')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  } catch (err) {
+    similarItems.value = []
+    const brief = similarFailMessage(err).slice(0, 100)
+    similarError.value = brief
+    // request 拦截器已 toast HTTP/业务错误；此处补一句场景提示，404 时最有用
+    if (err?.response?.status === 404 || !err?.response) {
+      ElMessage.error(brief)
+    }
+  } finally {
+    similarLoading.value = false
+  }
 }
 
 function setMode(next) {
@@ -475,7 +627,6 @@ async function runSearch() {
     })
     items.value = data.items || []
     if (data.catalog_total != null) catalogTotal.value = data.catalog_total
-    if (data.with_image != null) withImage.value = data.with_image
     if (selected.value) {
       const still = items.value.find((x) => x.id === selected.value.id)
       if (still) selected.value = still
@@ -1104,6 +1255,22 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.rec .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  width: 100%;
+}
+.rec .card-actions :deep(.el-button) {
+  margin: 0;
+}
+.rec .card-actions :deep(.similar-btn.el-button) {
+  margin-left: -4px;
+  padding-left: 4px;
+  padding-right: 8px;
+}
 
 .toolbar {
   padding: 14px 16px;
@@ -1159,6 +1326,37 @@ onMounted(async () => {
   margin: 0;
   color: var(--ink-soft);
   font-size: 13px;
+}
+
+.similar-btn,
+.similar-btn.is-text,
+.similar-btn.el-button,
+.similar-btn:deep(span) {
+  color: #2f6f6a !important;
+}
+.similar-btn.el-button.is-text {
+  /* text 按钮默认左右 padding 偏大，文字看起来往右飘 */
+  padding-left: 4px !important;
+  padding-right: 8px !important;
+  margin-left: -2px;
+}
+.similar-btn:hover,
+.similar-btn.is-text:hover,
+.similar-btn.el-button:hover,
+.similar-btn:hover:deep(span),
+.similar-btn:focus,
+.similar-btn:focus:deep(span) {
+  color: #1b4542 !important;
+}
+
+.similar-section {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.similar-section .section-head {
+  margin-bottom: 12px;
 }
 
 .recent-row {
@@ -1242,20 +1440,6 @@ onMounted(async () => {
   font-size: 42px;
   font-family: var(--font-display);
 }
-.badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1;
-  font-size: 11px;
-  line-height: 1.2;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.92);
-  border: 1px solid rgba(44,58,66,0.15);
-  color: var(--accent);
-}
-.badge.soft { color: var(--ink-soft); }
 .body {
   padding: 12px 14px 14px;
   display: flex;
@@ -1325,6 +1509,22 @@ onMounted(async () => {
   overflow: hidden;
 }
 .feats li { margin: 0; }
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  width: 100%;
+}
+.card-actions :deep(.el-button) {
+  margin: 0;
+}
+.card-actions :deep(.similar-btn.el-button) {
+  margin-left: -4px;
+  padding-left: 4px;
+  padding-right: 8px;
+}
 
 .select-bar {
   position: fixed;
@@ -1390,6 +1590,14 @@ onMounted(async () => {
   gap: 8px;
   flex: 0 0 auto;
   justify-content: flex-end;
+}
+.select-bar-actions :deep(.el-button) {
+  margin: 0;
+}
+.select-bar-actions :deep(.similar-btn.el-button) {
+  margin-left: -2px;
+  padding-left: 10px;
+  padding-right: 12px;
 }
 .select-bar-enter-active,
 .select-bar-leave-active {

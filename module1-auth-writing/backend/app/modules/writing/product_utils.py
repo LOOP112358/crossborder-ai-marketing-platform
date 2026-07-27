@@ -168,6 +168,172 @@ def serialize_product(p: AboProduct) -> Dict[str, Any]:
     }
 
 
+_SIMILAR_STOP = {
+    "the", "and", "for", "with", "from", "amazon", "brand", "color", "size",
+    "品牌", "颜色", "材质", "品类", "商品", "官方",
+}
+
+
+def _similarity_tokens(text: str) -> set:
+    blob = (text or "").lower()
+    tokens = re.findall(r"[a-z0-9]{2,}|[\u4e00-\u9fff]{2,}", blob)
+    return {t for t in tokens if t not in _SIMILAR_STOP}
+
+
+def _product_text_blob(p: AboProduct) -> str:
+    return " ".join(
+        filter(
+            None,
+            [
+                display_name(p),
+                p.item_name or "",
+                p.item_name_zh or "",
+                p.bullet_points or "",
+                p.bullet_points_zh or "",
+                p.color or "",
+                p.material or "",
+                p.material_zh or "",
+            ],
+        )
+    )
+
+
+def similarity_score(source: AboProduct, candidate: AboProduct) -> float:
+    """同款延伸打分：品类接近 + 品牌加成 + 名称/卖点词重叠，有主图加分。"""
+    score = 0.0
+    src_type = (source.product_type or "").strip().upper()
+    cand_type = (candidate.product_type or "").strip().upper()
+    if src_type and cand_type:
+        if src_type == cand_type:
+            score += 40
+        elif src_type in cand_type or cand_type in src_type:
+            score += 25
+
+    src_brand = (source.brand_zh or source.brand or "").strip().lower()
+    cand_brand = (candidate.brand_zh or candidate.brand or "").strip().lower()
+    if src_brand and cand_brand:
+        if src_brand == cand_brand or src_brand in cand_brand or cand_brand in src_brand:
+            score += 20
+
+    src_tokens = _similarity_tokens(_product_text_blob(source))
+    cand_tokens = _similarity_tokens(_product_text_blob(candidate))
+    if src_tokens and cand_tokens:
+        overlap = len(src_tokens & cand_tokens)
+        score += min(30.0, overlap * 5.0)
+
+    if getattr(candidate, "image_path", None):
+        score += 15
+
+    return score
+
+
+def _ilike_pattern(value: str) -> str:
+    """Escape LIKE wildcards so brand/type literals don't broaden or break the query."""
+    escaped = (
+        (value or "")
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return f"%{escaped}%"
+
+
+def find_similar_products(
+    db,
+    source: AboProduct,
+    *,
+    limit: int = 8,
+    pool_size: int = 80,
+) -> List[AboProduct]:
+    """在 ABO 库中找相似款：同/近品类优先，有图优先，排除自身。"""
+    from sqlalchemy import or_, func
+
+    limit = max(1, min(int(limit or 8), 12))
+    pool_size = max(limit, min(int(pool_size or 80), 120))
+    product_type = (source.product_type or "").strip()
+    brand = (source.brand_zh or source.brand or "").strip()
+
+    base = db.query(AboProduct).filter(AboProduct.id != source.id)
+    candidates: List[AboProduct] = []
+    seen = set()
+
+    def _extend(rows):
+        for p in rows:
+            if p.id in seen:
+                continue
+            seen.add(p.id)
+            candidates.append(p)
+
+    if product_type:
+        typed_q = base.filter(AboProduct.product_type.ilike(_ilike_pattern(product_type), escape="\\"))
+        # 先取有主图的同品类，不够再补无图
+        imaged = (
+            typed_q.filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "")
+            .order_by(func.random())
+            .limit(pool_size)
+            .all()
+        )
+        _extend(imaged)
+        if len(candidates) < pool_size:
+            more_typed = (
+                typed_q.order_by(AboProduct.image_path.isnot(None).desc())
+                .limit(pool_size)
+                .all()
+            )
+            _extend(more_typed)
+
+    if brand and len(candidates) < pool_size:
+        brand_pat = _ilike_pattern(brand)
+        branded = (
+            base.filter(
+                or_(
+                    AboProduct.brand.ilike(brand_pat, escape="\\"),
+                    AboProduct.brand_zh.ilike(brand_pat, escape="\\"),
+                )
+            )
+            .order_by(AboProduct.image_path.isnot(None).desc())
+            .limit(pool_size - len(candidates))
+            .all()
+        )
+        _extend(branded)
+
+    if len(candidates) < limit:
+        # 词重叠兜底：用名称关键词扩池
+        tokens = list(_similarity_tokens(_product_text_blob(source)))[:4]
+        if tokens:
+            likes = [
+                or_(
+                    AboProduct.item_name.ilike(_ilike_pattern(t), escape="\\"),
+                    AboProduct.item_name_zh.ilike(_ilike_pattern(t), escape="\\"),
+                    AboProduct.bullet_points.ilike(_ilike_pattern(t), escape="\\"),
+                    AboProduct.bullet_points_zh.ilike(_ilike_pattern(t), escape="\\"),
+                )
+                for t in tokens
+            ]
+            more = (
+                base.filter(or_(*likes))
+                .order_by(AboProduct.image_path.isnot(None).desc())
+                .limit(pool_size)
+                .all()
+            )
+            _extend(more)
+
+    if not candidates:
+        return []
+
+    ranked = sorted(
+        candidates,
+        key=lambda p: (
+            similarity_score(source, p),
+            1 if (getattr(p, "image_path", None) or "").strip() else 0,
+        ),
+        reverse=True,
+    )
+    # 至少要有一定相关性，避免乱推
+    filtered = [p for p in ranked if similarity_score(source, p) >= 15]
+    return (filtered or ranked)[:limit]
+
+
 def _clip(text: str, n: int, ellipsis: bool = False) -> str:
     """按长度裁剪；英文在空格处断开，避免 Darjeeling Te… 这种半词。"""
     text = (text or "").strip()

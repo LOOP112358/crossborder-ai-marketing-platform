@@ -15,6 +15,7 @@ from app.modules.writing.llm_client import get_llm_client
 from app.modules.writing.product_utils import (
     serialize_product,
     build_poster_copy,
+    find_similar_products,
     TYPE_ZH,
 )
 from app.modules.writing.campaign_assistant import list_campaigns, recommend_campaign
@@ -230,17 +231,40 @@ def search_products(
     }
 
 
-@router.get("/products/{product_id}", response_model=dict)
-def get_product(
-    product_id: int,
+# Static suffixes (/similar, /poster-copy) BEFORE bare /{product_id}
+@router.get("/products/{product_id}/similar", response_model=dict)
+def similar_products(
+    product_id: str,
+    limit: int = Query(8, ge=1, le=12, description="返回条数，建议 6–12"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """按 id 取单条商品详情。"""
-    p = db.query(AboProduct).filter(AboProduct.id == product_id).first()
+    """同款延伸：按品类/品牌/关键词重叠找相似货盘，优先有主图。
+
+    product_id 支持数字主键 id，也兼容 ABO item_id（如 B07XXXX）。
+    """
+    pid = (product_id or "").strip()
+    p = None
+    if pid.isdigit():
+        p = db.query(AboProduct).filter(AboProduct.id == int(pid)).first()
+    if not p and pid:
+        p = db.query(AboProduct).filter(AboProduct.item_id == pid).first()
     if not p:
         return {"code": 404, "message": "商品不存在", "data": None}
-    return {"code": 200, "message": "ok", "data": serialize_product(p)}
+    try:
+        rows = find_similar_products(db, p, limit=limit)
+    except Exception as exc:
+        # 避免 ilike/排序异常直接 500，前端可展示明确文案
+        raise HTTPException(status_code=500, detail=f"相似款查询失败：{exc}") from exc
+    return {
+        "code": 200,
+        "message": "ok",
+        "data": {
+            "source": serialize_product(p),
+            "items": [serialize_product(x) for x in rows],
+            "limit": limit,
+        },
+    }
 
 
 @router.get("/products/{product_id}/poster-copy", response_model=dict)
@@ -273,6 +297,19 @@ async def get_poster_copy(
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+@router.get("/products/{product_id}", response_model=dict)
+def get_product(
+    product_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """按 id 取单条商品详情。"""
+    p = db.query(AboProduct).filter(AboProduct.id == product_id).first()
+    if not p:
+        return {"code": 404, "message": "商品不存在", "data": None}
+    return {"code": 200, "message": "ok", "data": serialize_product(p)}
 
 
 @router.post("/generate", response_model=dict)
