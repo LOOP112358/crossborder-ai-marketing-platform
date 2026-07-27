@@ -22,8 +22,10 @@ export default defineConfig({
       'vue-i18n': path.resolve(NM, 'vue-i18n'),
       axios: path.resolve(NM, 'axios'),
       '@element-plus/icons-vue': path.resolve(NM, '@element-plus/icons-vue'),
+      marked: path.resolve(NM, 'marked'),
+      echarts: path.resolve(NM, 'echarts'),
     },
-    dedupe: ['vue', 'vue-router', 'pinia', 'element-plus', 'vue-i18n'],
+    dedupe: ['vue', 'vue-router', 'pinia', 'element-plus', 'vue-i18n', 'marked'],
   },
   server: {
     port: 5173,

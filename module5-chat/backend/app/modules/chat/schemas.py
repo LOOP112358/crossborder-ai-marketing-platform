@@ -42,6 +42,18 @@ class MessageResponse(BaseModel):
     user_message: MessageOut
     assistant_message: MessageOut
     sources: List[str] = []
+    products: List[Dict[str, Any]] = []
+
+
+class ProductCard(BaseModel):
+    item_id: str
+    name: str
+    name_en: Optional[str] = None
+    brand: Optional[str] = None
+    product_type: Optional[str] = None
+    color: Optional[str] = None
+    highlights: List[str] = []
+    image_url: Optional[str] = None
 
 
 class FeedbackCreate(BaseModel):

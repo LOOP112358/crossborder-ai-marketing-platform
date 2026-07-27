@@ -13,18 +13,17 @@ def _fallback_answer(question: str, contexts: List[str], language: str) -> str:
             )
         return "抱歉，未在知识库中找到相关信息。请上传商品文档，或尝试询问 Amazon 商品相关问题。"
 
-    context_text = "\n".join(f"- {c[:300]}" for c in contexts[:3])
+    bullets = "\n".join(f"- {c[:280]}" for c in contexts[:3])
     if language == "en":
         return (
-            f"Based on the retrieved knowledge:\n\n{context_text}\n\n"
-            f"Regarding your question \"{question}\": "
-            "The above product information should help answer your query. "
-            "For more details, please refer to the specific product attributes listed."
+            f"### Retrieved knowledge\n\n{bullets}\n\n"
+            f"**Regarding** \"{question}\": the items above should help. "
+            "Ask for brand or attributes if you need more detail."
         )
     return (
-        f"根据知识库检索结果：\n\n{context_text}\n\n"
-        f"关于您的问题「{question}」："
-        "以上商品信息可供参考。如需更详细的参数，请查看具体商品属性描述。"
+        f"### 知识库检索结果\n\n{bullets}\n\n"
+        f"关于您的问题「**{question}**」：以上信息可供参考。"
+        "如需更详细参数，可继续追问品牌或卖点。"
     )
 
 
@@ -60,7 +59,9 @@ async def generate_bilingual_reply(
         f"4. 保持上下文连贯：用户追问「还有别的吗」「继续」时，"
         f"必须基于对话历史中讨论过的品类继续推荐，不能跳到不相关的品类。\n"
         f"5. 语言要求：用中文回答时，商品属性、卖点全部翻译成中文，"
-        f"品牌名保留英文原文。整段回复自然流畅，不要中英混杂。\n\n"
+        f"品牌名保留英文原文。整段回复自然流畅，不要中英混杂。\n"
+        f"6. 排版要求：使用 Markdown（标题用 ###、列表用 - 、重点用 **加粗**），"
+        f"便于前端渲染，不要输出大段无结构白字。\n\n"
         f"# 禁止事项\n"
         f"- 禁止凭空编造商品信息、价格、库存。参考知识中没有的信息就说没有，不要胡编。\n"
         f"- 禁止在用户没有指定品类时说「目前没有该商品」，应当根据目录概况告知平台有哪些品类可供选择。\n"
@@ -82,10 +83,88 @@ async def generate_bilingual_reply(
                 },
             )
             resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
-            return raw.replace("**", "")
+            return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         return _fallback_answer(question, contexts, language)
+
+
+async def generate_session_title(question: str, language: str = "zh") -> str:
+    """为会话生成概括性短标题（有 Key 走 LLM，否则本地规则）。"""
+    q = (question or "").strip().replace("\n", " ")
+    if not q:
+        return "新会话"
+
+    if OPENAI_API_KEY:
+        lang_hint = (
+            "Output a short English noun phrase (3-6 words)."
+            if language == "en"
+            else "输出一句极短的中文短语（约 6～14 个字）。"
+        )
+        prompt = (
+            "你是聊天会话标题生成器。根据用户第一句话，生成一个概括性标题。\n"
+            f"{lang_hint}\n"
+            "要求：只输出标题本身；不要引号、句号、冒号；不要解释；不要加「关于」「咨询」等废话前缀。\n"
+            "示例：\n"
+            "- 推荐几款蓝牙耳机 → 蓝牙耳机推荐\n"
+            "- 保温杯能保冷多久？ → 保温杯保冷时长\n"
+            "- Do you have running shoes? → Running shoes\n\n"
+            f"用户问题：{q[:200]}\n"
+            "标题："
+        )
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = await client.post(
+                    f"{OPENAI_BASE_URL.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    json={
+                        "model": OPENAI_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.2,
+                        "max_tokens": 32,
+                    },
+                )
+                resp.raise_for_status()
+                title = resp.json()["choices"][0]["message"]["content"].strip()
+                title = title.splitlines()[0].strip().strip("「」\"'《》#*- ")
+                if title:
+                    return title[:24]
+        except Exception:
+            pass
+
+    return _fallback_session_title(q, language)
+
+
+def _fallback_session_title(question: str, language: str = "zh") -> str:
+    """无 LLM 时的本地标题：品类短语优先，否则清洗后截断。"""
+    topic_map = [
+        (("蓝牙耳机", "无线耳机", "耳机"), "蓝牙耳机推荐" if language != "en" else "Bluetooth earbuds"),
+        (("运动鞋", "跑鞋", "鞋子"), "运动鞋选购" if language != "en" else "Running shoes"),
+        (("保温杯", "水杯", "水壶"), "保温杯咨询" if language != "en" else "Thermo bottle"),
+        (("台灯", "护眼灯"), "台灯选购" if language != "en" else "Desk lamp"),
+        (("T恤", "衣服", "服装"), "服饰咨询" if language != "en" else "Apparel"),
+        (("手机壳", "手机套"), "手机壳推荐" if language != "en" else "Phone cases"),
+        (("售后", "退货", "运费"), "售后问题" if language != "en" else "After-sales"),
+    ]
+    for keys, title in topic_map:
+        if any(k in question for k in keys):
+            return title
+
+    cleaned = question
+    for junk in (
+        "请问", "你好", "您好", "帮我", "我想", "想问", "一下", "可以", "吗", "呢",
+        "怎么", "如何", "推荐几款", "推荐一些", "推荐", "有没有", "有什么",
+        "please", "could you", "can you", "i want", "looking for",
+    ):
+        cleaned = cleaned.replace(junk, "")
+    cleaned = "".join(cleaned.split()).strip("？?！!。，,、 ")
+    if not cleaned:
+        cleaned = question.strip()
+    if language == "en":
+        words = cleaned.split()
+        return (" ".join(words[:5]) or "New chat")[:40]
+    if len(cleaned) > 14:
+        return cleaned[:14] + "…"
+    return cleaned[:14] or "新会话"
 
 
 async def generate_operation_advice(stats_summary: str) -> str:
@@ -117,7 +196,7 @@ async def generate_operation_advice(stats_summary: str) -> str:
                 },
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip().replace("**", "")
+            return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         return (
             "【运营建议（本地模式）】\n"

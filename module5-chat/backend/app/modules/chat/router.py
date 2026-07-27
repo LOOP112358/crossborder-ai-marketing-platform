@@ -12,8 +12,17 @@ from app.modules.chat.schemas import SessionCreate, SessionOut, MessageCreate, M
 from app.modules.chat.services.config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, UPLOAD_DIR, FAISS_DIR
 from app.modules.chat.services.document_parser import parse_document, chunk_text
 from app.modules.chat.services.rag_service import build_session_index, retrieve_context
-from app.modules.chat.services.llm_service import generate_bilingual_reply
+from app.modules.chat.services.llm_service import generate_bilingual_reply, generate_session_title
 from app.modules.chat.services.stats_service import refresh_daily_stats
+from app.modules.chat.services.product_search import (
+    detect_product_types,
+    local_english_keywords,
+    search_products_by_type,
+    search_products_by_keywords,
+    format_product_answer,
+    resolve_language,
+    product_to_card,
+)
 
 _FALLBACK_USER_ID = 1
 
@@ -227,11 +236,13 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
     if not session:
         raise HTTPException(404, "会话不存在")
 
+    lang = resolve_language(body.language, body.content)
+
     user_msg = ChatMessage(
         session_id=body.session_id,
         role="user",
         content=body.content,
-        language=body.language,
+        language=lang,
     )
     db.add(user_msg)
     db.commit()
@@ -239,18 +250,42 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
 
     history = _get_recent_history(db, body.session_id, limit=6)
 
-    # LLM 翻译中文查询为英文关键词，然后直接 SQLite LIKE 搜
+    # 1) 品类优先检索
+    products = []
+    product_types = detect_product_types(body.content)
+    # 演示种子库品类名可能是 ELECTRONICS / FOOTWEAR，做一层兼容
+    if "HEADPHONES" in product_types and "ELECTRONICS" not in product_types:
+        product_types.append("ELECTRONICS")
+    if "TECHNICAL_SPORT_SHOE" in product_types:
+        for extra in ("FOOTWEAR", "SHOES"):
+            if extra not in product_types:
+                product_types.append(extra)
+    if product_types:
+        products = search_products_by_type(db, product_types, limit=6)
+
+    # 2) 中文查询 → 英文关键词（有 Key 走 LLM，否则本地词典）
     search_query = body.content
     translated = ""
     if any("一" <= c <= "鿿" for c in body.content):
         translated = await _translate_query_for_search(body.content, history)
+        if not translated:
+            translated = local_english_keywords(body.content)
     if translated:
         search_query = translated
 
-    # FAISS 向量检索（主）
-    contexts = retrieve_context(body.session_id, search_query)
+    if not products and search_query:
+        products = search_products_by_keywords(db, search_query, limit=6)
 
-    # 补充：翻译结果中的 product_type 精确匹配，直接查 DB
+    # 3) 上下文：商品 FAQ 优先，再补 FAISS
+    contexts = [p.faq_text for p in products if p.faq_text][:8]
+    if len(contexts) < 3:
+        for c in retrieve_context(body.session_id, search_query):
+            if c not in contexts:
+                contexts.append(c)
+            if len(contexts) >= 8:
+                break
+
+    # 翻译结果中的 product_type 再补一轮
     if translated:
         keywords = set(re.findall(r"[A-Z_]{4,}", translated))
         if keywords:
@@ -258,27 +293,51 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
                 r[0] for r in db.query(AboProduct.product_type)
                 .filter(AboProduct.product_type.in_(keywords)).all()
             )
-            seen_ids = set()
+            seen_ids = {p.item_id for p in products}
             for pt in valid_types:
-                products = db.query(AboProduct).filter(AboProduct.product_type == pt).limit(5).all()
-                for p in products:
-                    if p.item_id not in seen_ids and p.faq_text not in contexts:
+                rows = db.query(AboProduct).filter(AboProduct.product_type == pt).limit(5).all()
+                for p in rows:
+                    if p.item_id not in seen_ids:
                         seen_ids.add(p.item_id)
-                        contexts.insert(0, p.faq_text)
+                        products.append(p)
+                        if p.faq_text and p.faq_text not in contexts:
+                            contexts.insert(0, p.faq_text)
 
+    products = products[:6]
     catalog_summary = _build_catalog_summary(db)
 
-    answer = await generate_bilingual_reply(body.content, contexts, body.language, catalog_summary, history)
+    # 无 LLM 且已命中商品：用结构化 Markdown；否则走 LLM/模板
+    if not OPENAI_API_KEY and products:
+        answer = format_product_answer(body.content, products, lang)
+    else:
+        answer = await generate_bilingual_reply(
+            body.content, contexts, lang, catalog_summary, history
+        )
 
     assistant_msg = ChatMessage(
         session_id=body.session_id,
         role="assistant",
         content=answer,
-        language=body.language,
+        language=lang,
     )
     db.add(assistant_msg)
     db.commit()
     db.refresh(assistant_msg)
+
+    # 首条用户消息：生成概括性会话标题（像 ChatGPT 会话名）
+    user_msg_count = (
+        db.query(func.count(ChatMessage.id))
+        .filter(ChatMessage.session_id == body.session_id, ChatMessage.role == "user")
+        .scalar()
+        or 0
+    )
+    default_titles = {"", "新会话", "文档会话", "New chat", "new chat"}
+    cur_title = (session.title or "").strip()
+    should_retitle = user_msg_count <= 1 or cur_title in default_titles
+    if should_retitle:
+        session.title = await generate_session_title(body.content, lang)
+        db.commit()
+        db.refresh(session)
 
     refresh_daily_stats(db)
 
@@ -286,6 +345,9 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
         "user_message": MessageOut.model_validate(user_msg).model_dump(),
         "assistant_message": MessageOut.model_validate(assistant_msg).model_dump(),
         "sources": contexts[:3],
+        "products": [product_to_card(p) for p in products],
+        "session_title": session.title,
+        "session_id": session.id,
     }, "回复成功")
 
 

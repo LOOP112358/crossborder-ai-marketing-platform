@@ -163,48 +163,69 @@ def format_product_answer(question: str, products: List[AboProduct], language: s
 
     lines = []
     if language == "en":
-        lines.append(f'Found {len(products)} product(s) related to "{question}".')
+        lines.append(f'### Found {len(products)} product(s)')
+        lines.append(f'Related to **"{question}"**.')
         if brands:
-            lines.append("Brands: " + ", ".join(brands[:12]))
+            lines.append(f"\n**Brands:** " + ", ".join(brands[:12]))
         lines.append("")
         for i, p in enumerate(products[:6], 1):
             faq = parse_faq(p.faq_text or "")
-            lines.append(f"{i}. {p.item_name or 'Unnamed'}")
-            lines.append(f"   - Type: {p.product_type or '-'}")
-            lines.append(f"   - Brand: {p.brand or '-'}")
+            lines.append(f"**{i}. {p.item_name or 'Unnamed'}**")
+            lines.append(f"- Type: {p.product_type or '-'}")
+            lines.append(f"- Brand: {p.brand or '-'}")
             if p.color:
-                lines.append(f"   - Color: {p.color}")
+                lines.append(f"- Color: {p.color}")
             if p.material:
-                lines.append(f"   - Material: {p.material}")
+                lines.append(f"- Material: {p.material}")
             bullets = (p.bullet_points or faq.get("bullet points", "")).strip()
             if bullets:
                 tip = bullets.split("|")[0].strip()
                 if tip:
-                    lines.append(f"   - Highlight: {tip[:120]}")
+                    lines.append(f"- Highlight: {tip[:120]}")
             lines.append("")
         lines.append("Ask a brand name for more details.")
     else:
-        lines.append(f"根据知识库，找到与「{question}」相关的 {len(products)} 件商品：")
+        lines.append(f"### 为您找到 {len(products)} 件相关商品")
+        lines.append(f"关键词：**{question}**")
         if brands:
-            lines.append("可选品牌：" + "、".join(brands[:12]))
+            lines.append(f"\n**可选品牌：** " + "、".join(brands[:12]))
         lines.append("")
         for i, p in enumerate(products[:6], 1):
             faq = parse_faq(p.faq_text or "")
-            lines.append(f"{i}. {p.item_name or '未命名商品'}")
-            lines.append(f"   - 类型：{p.product_type or '-'}")
-            lines.append(f"   - 品牌：{p.brand or '-'}")
+            name = p.item_name_zh or p.item_name or "未命名商品"
+            lines.append(f"**{i}. {name}**")
+            lines.append(f"- 类型：{p.product_type or '-'}")
+            lines.append(f"- 品牌：{p.brand_zh or p.brand or '-'}")
             if p.color:
-                lines.append(f"   - 颜色：{p.color}")
-            if p.material:
-                lines.append(f"   - 材质：{p.material}")
-            bullets = (p.bullet_points or faq.get("bullet points", "")).strip()
+                lines.append(f"- 颜色：{p.color}")
+            mat = p.material_zh or p.material
+            if mat:
+                lines.append(f"- 材质：{mat}")
+            bullets = (p.bullet_points_zh or p.bullet_points or faq.get("卖点特征(中文)", "") or faq.get("bullet points", "")).strip()
             if bullets:
-                tip = bullets.split("|")[0].strip()
+                tip = bullets.replace("；", "|").split("|")[0].strip()
                 if tip:
-                    lines.append(f"   - 卖点：{tip[:120]}")
+                    lines.append(f"- 卖点：{tip[:120]}")
             lines.append("")
-        lines.append("可以继续问某个品牌，例如直接发品牌名。")
+        lines.append("可以继续问某个品牌，或说「还有别的吗」。")
     return "\n".join(lines).strip()
+
+
+def product_to_card(p: AboProduct) -> dict:
+    """前端商品卡片字段。"""
+    bullets_zh = (p.bullet_points_zh or "").replace("；", "|")
+    bullets_en = (p.bullet_points or "").replace(";", "|")
+    highlights = [x.strip() for x in (bullets_zh or bullets_en).split("|") if x.strip()][:3]
+    return {
+        "item_id": p.item_id,
+        "name": p.item_name_zh or p.item_name or "商品",
+        "name_en": p.item_name,
+        "brand": p.brand_zh or p.brand or "",
+        "product_type": p.product_type or "",
+        "color": p.color or "",
+        "highlights": highlights,
+        "image_url": p.image_url,
+    }
 
 
 def resolve_language(language: Optional[str], question: str) -> str:
