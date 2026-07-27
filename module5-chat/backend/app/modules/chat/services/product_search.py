@@ -90,6 +90,10 @@ def search_products_by_type(db: Session, product_types: List[str], limit: int = 
     if not product_types:
         return []
     products: List[AboProduct] = []
+    # True/1 在前：有主图优先
+    has_img = (
+        AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
+    )
     for pt in product_types:
         rows = (
             db.query(AboProduct)
@@ -99,6 +103,7 @@ def search_products_by_type(db: Session, product_types: List[str], limit: int = 
                     AboProduct.product_type.ilike(f"%{pt}%"),
                 )
             )
+            .order_by(has_img.desc(), AboProduct.id.asc())
             .limit(limit)
             .all()
         )
@@ -114,7 +119,9 @@ def search_products_by_keywords(db: Session, keywords: str, limit: int = 8) -> L
     tokens = [t for t in re.split(r"\s+", keywords.upper()) if len(t) >= 3]
     if not tokens:
         return []
-    # 优先用 product_type / item_name / brand / faq_text 命中
+    has_img = (
+        AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
+    )
     products: List[AboProduct] = []
     for tok in tokens[:6]:
         rows = (
@@ -127,6 +134,7 @@ def search_products_by_keywords(db: Session, keywords: str, limit: int = 8) -> L
                     AboProduct.faq_text.ilike(f"%{tok}%"),
                 )
             )
+            .order_by(has_img.desc(), AboProduct.id.asc())
             .limit(limit)
             .all()
         )
