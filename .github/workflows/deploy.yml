@@ -1,0 +1,39 @@
+name: Deploy to Tencent Cloud
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH into server and deploy
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 152.136.27.117
+          username: root
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          script: |
+            set -e
+            cd /opt/crossborder-ai
+            echo "[1/5] Pull latest code..."
+            git pull origin main
+
+            echo "[2/5] Update Python dependencies..."
+            source venv/bin/activate
+            pip install -r requirements.txt -q
+
+            echo "[3/5] Rebuild frontend..."
+            cd shared/frontend
+            npm install --silent
+            npm run build
+
+            echo "[4/5] Restart backend..."
+            sudo systemctl restart crossborder.service
+
+            echo "[5/5] Reload Nginx..."
+            sudo nginx -s reload
+
+            echo "Deploy done!"
+            systemctl status crossborder.service --no-pager | head -5
