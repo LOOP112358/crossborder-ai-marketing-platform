@@ -1,0 +1,100 @@
+name: Setup ABO dataset on server
+
+# 在云服务器下载 ABO listings + images-small，写入 .env，导入/回填图片并重启。
+# 在 GitHub Actions 页面手动 Run workflow 触发（约需 3GB+ 磁盘与较长时间）。
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-abo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ABO on server and wire into app
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 152.136.27.117
+          username: root
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          command_timeout: 150m
+          script: |
+            set -euo pipefail
+
+            APP_DIR=/opt/crossborder-ai
+            DATA_DIR=/opt/abo-data
+            LISTINGS_URL=https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-listings.tar
+            IMAGES_URL=https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-images-small.tar
+
+            echo "[0] Disk space:"
+            df -h /opt || df -h /
+
+            avail_kb=$(df -Pk /opt 2>/dev/null | awk 'NR==2{print $4}')
+            if [ -n "${avail_kb:-}" ] && [ "$avail_kb" -lt 7000000 ]; then
+              echo "ERROR: need ~7GB free under /opt (have ${avail_kb}KB). Abort."
+              exit 1
+            fi
+
+            mkdir -p "$DATA_DIR"
+            cd "$DATA_DIR"
+
+            echo "[1] Download abo-listings.tar (83MB) if needed..."
+            if [ ! -f abo-listings.tar ]; then
+              wget -c --timeout=30 --tries=10 -O abo-listings.tar "$LISTINGS_URL"
+            else
+              echo "  abo-listings.tar already present"
+            fi
+
+            echo "[2] Download abo-images-small.tar (~3GB) if needed..."
+            if [ ! -f abo-images-small.tar ]; then
+              wget -c --timeout=60 --tries=20 -O abo-images-small.tar "$IMAGES_URL"
+            else
+              echo "  abo-images-small.tar already present ($(du -h abo-images-small.tar | cut -f1))"
+            fi
+
+            echo "[3] Extract listings..."
+            if [ ! -d listings/metadata ]; then
+              tar -xf abo-listings.tar
+            else
+              echo "  listings/ already extracted"
+            fi
+
+            echo "[4] Extract images (slow)..."
+            if [ ! -d images/small ]; then
+              tar -xf abo-images-small.tar
+            else
+              echo "  images/small already extracted"
+            fi
+
+            echo "[5] Update $APP_DIR/.env ..."
+            ENV_FILE="$APP_DIR/.env"
+            touch "$ENV_FILE"
+            tmp=$(mktemp)
+            grep -Ev '^(ABO_LISTINGS_DIR|ABO_IMAGES_DIR|ABO_IMPORT_LIMIT)=' "$ENV_FILE" > "$tmp" || true
+            {
+              echo "ABO_LISTINGS_DIR=$DATA_DIR"
+              echo "ABO_IMAGES_DIR=$DATA_DIR"
+              echo "ABO_IMPORT_LIMIT=3000"
+            } >> "$tmp"
+            mv "$tmp" "$ENV_FILE"
+            echo "  ABO paths written:"
+            grep -E '^ABO_' "$ENV_FILE" || true
+
+            echo "[6] Import listings + backfill images..."
+            cd "$APP_DIR"
+            # shellcheck disable=SC1091
+            source venv/bin/activate
+            python scripts/import_abo_kb.py --limit 3000
+            python scripts/import_abo_kb.py --backfill-images
+
+            echo "[7] Restart backend + nginx..."
+            systemctl restart crossborder.service
+            sleep 4
+            if ! systemctl is-active --quiet crossborder.service; then
+              journalctl -u crossborder.service -n 50 --no-pager || true
+              exit 1
+            fi
+            nginx -s reload || true
+            curl -fsS "http://127.0.0.1:8000/api/health"
+            echo
+            echo "ABO setup done."
+            ls -ld "$DATA_DIR/listings/metadata" "$DATA_DIR/images/small" || true
+            du -sh "$DATA_DIR" || true
