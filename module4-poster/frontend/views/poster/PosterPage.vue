@@ -33,9 +33,13 @@
           <el-input v-model="form.bg_url" placeholder="/static/.../background.png" size="small" style="margin-top:4px" />
 
           <h4 class="section-title">文案内容</h4>
+          <p class="hint">库内字段可即时填入；「AI 精炼」会用知识库卖点 + DeepSeek 压成适合叠字的短句。</p>
           <div class="action-row" style="margin-top:0;margin-bottom:8px">
             <el-button type="warning" @click="fillFromCatalog" :disabled="!appStore.selectedProductId && !appStore.posterConfig.title">
               使用库内商品文案
+            </el-button>
+            <el-button type="primary" plain :loading="refiningCopy" @click="refineWithAI" :disabled="!appStore.selectedProductId">
+              AI 精炼短文案
             </el-button>
             <el-button @click="fillChineseDemo">填入中文示例</el-button>
           </div>
@@ -108,6 +112,18 @@
           </el-collapse>
 
           <div class="action-row">
+            <el-checkbox v-model="form.auto_layout">自动排版（按模板安全区换行/间距）</el-checkbox>
+            <el-checkbox v-model="form.text_stroke_enabled">文字描边</el-checkbox>
+            <el-checkbox v-model="form.text_shadow_enabled">文字阴影</el-checkbox>
+          </div>
+          <div class="action-row">
+            <el-checkbox v-model="form.refine_enabled">融合精修（画文字前）</el-checkbox>
+            <el-select v-model="form.refine_engine" style="width:220px" size="small" :disabled="!form.refine_enabled">
+              <el-option value="seedream" label="豆包 Seedream（推荐，不耗 SD）" />
+              <el-option value="sd" label="Stable Diffusion（耗额度）" />
+            </el-select>
+          </div>
+          <div class="action-row">
             <el-button type="primary" :loading="composing" @click="composePoster">生成海报</el-button>
             <el-button type="success" @click="useWhiteStyle">白底推荐样式</el-button>
             <el-button @click="resetStyle">恢复默认样式</el-button>
@@ -160,6 +176,7 @@ import { ElMessage } from 'element-plus'
 
 const appStore = useAppStore()
 const composing = ref(false)
+const refiningCopy = ref(false)
 const posterUrl = ref('')
 const statusMsg = ref('')
 const templates = ref([])
@@ -194,7 +211,7 @@ const layers = [
 const form = reactive({
   matted_url: '',
   bg_url: '',
-  template_id: 2,
+  template_id: 9,
   title: '',
   subtitle: '',
   selling_point_1: '',
@@ -205,25 +222,25 @@ const form = reactive({
   ratio: '1:1',
   title_color: '#111111',
   title_font_name: 'msyh',
-  title_art_style: 'stroke_shadow',
+  title_art_style: 'shadow',
   title_x: null,
   title_y: null,
   title_font_size: null,
   subtitle_color: '#D81B60',
   subtitle_font_name: 'msyh',
-  subtitle_art_style: 'stroke_shadow',
+  subtitle_art_style: 'normal',
   subtitle_x: null,
   subtitle_y: null,
   subtitle_font_size: null,
   selling_point_1_color: '#111111',
   selling_point_1_font_name: 'msyh',
-  selling_point_1_art_style: 'shadow',
+  selling_point_1_art_style: 'normal',
   selling_point_1_x: null,
   selling_point_1_y: null,
   selling_point_1_font_size: null,
   selling_point_2_color: '#111111',
   selling_point_2_font_name: 'msyh',
-  selling_point_2_art_style: 'shadow',
+  selling_point_2_art_style: 'normal',
   selling_point_2_x: null,
   selling_point_2_y: null,
   selling_point_2_font_size: null,
@@ -234,10 +251,16 @@ const form = reactive({
   cta_text_x: null,
   cta_text_y: null,
   cta_text_font_size: null,
-  text_stroke_enabled: true,
+  text_stroke_enabled: false,
   text_stroke_color: '#FFFFFF',
   text_stroke_width: 2,
   text_shadow_enabled: true,
+  auto_layout: true,
+  refine_enabled: true,
+  refine_engine: 'seedream',
+  sd_refine: false,
+  sd_refine_strength: 0.28,
+  product_hint: '',
 })
 
 async function onUpload(files, type) {
@@ -258,7 +281,7 @@ async function loadTemplates() {
     templates.value = await request.get('/poster/templates')
     const ids = templates.value.map((t) => t.id)
     if (!ids.includes(form.template_id)) {
-      form.template_id = ids.includes(2) ? 2 : (ids[0] || 2)
+      form.template_id = ids.includes(9) ? 9 : (ids.includes(2) ? 2 : (ids[0] || 9))
     }
     onTemplateChange(form.template_id, true)
   } catch {}
@@ -290,9 +313,23 @@ async function composePoster() {
     ElMessage.warning('建议使用第1步抠图结果（/static/matte/...）作为商品图')
   }
   composing.value = true
-  statusMsg.value = '正在生成海报...'
+  statusMsg.value = form.refine_enabled
+    ? (form.refine_engine === 'sd'
+      ? '正在合成并调用 SD 精修（约 20～40 秒）…'
+      : '正在合成并用 Seedream 融合精修（约 20～60 秒）…')
+    : '正在生成海报...'
   try {
-    const data = await request.post('/poster/compose', { ...form })
+    const p = appStore.selectedProduct || {}
+    const payload = {
+      ...form,
+      sd_refine: form.refine_enabled && form.refine_engine === 'sd',
+      refine_enabled: form.refine_enabled,
+      refine_engine: form.refine_engine,
+      product_hint: [p.brand, p.name || p.item_name, p.product_type].filter(Boolean).join(' / '),
+    }
+    const data = await request.post('/poster/compose', payload, {
+      timeout: form.refine_enabled ? 180000 : 60000,
+    })
     posterUrl.value = data.poster_url
     statusMsg.value = '海报生成成功！'
     ElMessage.success('海报合成成功')
@@ -322,12 +359,18 @@ function onTemplateChange(id, silent = false) {
     if (d.color) form[`${prefix}_color`] = d.color
     if (d.font_name) form[`${prefix}_font_name`] = d.font_name
     if (d.art_style) form[`${prefix}_art_style`] = d.art_style
-    if (d.x != null) form[`${prefix}_x`] = d.x
-    if (d.y != null) form[`${prefix}_y`] = d.y
+    // 自动排版时不锁死模板坐标，交给后端安全区堆叠
+    if (!form.auto_layout) {
+      if (d.x != null) form[`${prefix}_x`] = d.x
+      if (d.y != null) form[`${prefix}_y`] = d.y
+    } else {
+      form[`${prefix}_x`] = null
+      form[`${prefix}_y`] = null
+    }
     if (d.font_size != null) form[`${prefix}_font_size`] = d.font_size
     if (key === 'cta_text' && d.button_color) form.cta_button_color = d.button_color
   })
-  if (!silent) ElMessage.success(`已应用「${t.name}」推荐排版`)
+  if (!silent) ElMessage.success(`已应用「${t.name}」推荐样式${form.auto_layout ? '（自动排版开启）' : ''}`)
 }
 
 function doFav(pid) {
@@ -354,11 +397,12 @@ function applyPosterCopy(copy) {
 }
 
 async function fillFromCatalog() {
-  const cfg = appStore.posterConfig
-  if (cfg?.title) {
-    applyPosterCopy(cfg)
+  if (!appStore.selectedProductId && appStore.posterConfig?.title) {
+    applyPosterCopy(appStore.posterConfig)
     if (appStore.mattedUrl) form.matted_url = appStore.mattedUrl
-    if (appStore.enhancedBgUrl) form.bg_url = appStore.enhancedBgUrl
+    if (appStore.preferredBgUrl || appStore.enhancedBgUrl) {
+      form.bg_url = appStore.preferredBgUrl || appStore.enhancedBgUrl
+    }
     ElMessage.success('已填入库内商品海报文案')
     return
   }
@@ -367,12 +411,30 @@ async function fillFromCatalog() {
     return
   }
   try {
-    const data = await getPosterCopy(appStore.selectedProductId, 'zh')
+    const data = await getPosterCopy(appStore.selectedProductId, 'zh', false)
     appStore.setSelectedProduct(data.product, data.poster_copy)
     applyPosterCopy(data.poster_copy)
-    if (data.product?.image_url) form.matted_url = data.product.image_url
     ElMessage.success('已根据商品库生成海报文案')
   } catch {}
+}
+
+async function refineWithAI() {
+  if (!appStore.selectedProductId) {
+    ElMessage.warning('请先从商品库选品')
+    return
+  }
+  refiningCopy.value = true
+  try {
+    const data = await getPosterCopy(appStore.selectedProductId, 'zh', true)
+    appStore.setSelectedProduct(data.product, data.poster_copy)
+    applyPosterCopy(data.poster_copy)
+    const src = data.poster_copy?.source === 'kb+llm' ? '知识库 + DeepSeek' : '知识库规则（LLM 未就绪，已回退）'
+    ElMessage.success(`已用${src}精炼短文案`)
+  } catch (e) {
+    ElMessage.error('精炼失败：' + (e?.response?.data?.detail || e?.message || ''))
+  } finally {
+    refiningCopy.value = false
+  }
 }
 
 function resetStyle() {
@@ -411,17 +473,18 @@ onMounted(() => {
   } else {
     form.matted_url = ''
   }
-  if (appStore.enhancedBgUrl) form.bg_url = appStore.enhancedBgUrl
+  form.bg_url = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl || form.bg_url
   if (appStore.posterConfig?.title) applyPosterCopy(appStore.posterConfig)
 })
 
 watch(
-  () => [appStore.mattedUrl, appStore.enhancedBgUrl, appStore.posterConfig],
+  () => [appStore.mattedUrl, appStore.preferredBgUrl, appStore.seedreamBgUrl, appStore.enhancedBgUrl, appStore.posterConfig],
   () => {
     if (appStore.mattedUrl && appStore.mattedUrl.includes('/static/matte/')) {
       form.matted_url = appStore.mattedUrl
     }
-    if (appStore.enhancedBgUrl) form.bg_url = appStore.enhancedBgUrl
+    const bg = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl
+    if (bg) form.bg_url = bg
     if (appStore.posterConfig?.title && !form.title) applyPosterCopy(appStore.posterConfig)
   },
   { deep: true }

@@ -213,22 +213,27 @@ def get_product(
 
 
 @router.get("/products/{product_id}/poster-copy", response_model=dict)
-def get_poster_copy(
+async def get_poster_copy(
     product_id: int,
     language: str = Query("zh"),
+    llm: bool = Query(False, description="是否用 DeepSeek 精炼为海报短文案"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """根据库内商品字段生成海报文案（即时，不走 LLM）。"""
+    """库内字段生成海报文案；llm=1 时再用 DeepSeek 压成适合叠字的短句。"""
+    from app.modules.writing.product_utils import refine_poster_copy_with_llm
+
     p = db.query(AboProduct).filter(AboProduct.id == product_id).first()
     if not p:
         return {"code": 404, "message": "商品不存在", "data": None}
+    base = build_poster_copy(p, language=language)
+    poster_copy = await refine_poster_copy_with_llm(p, base, language) if llm else base
     return {
         "code": 200,
         "message": "ok",
         "data": {
             "product": serialize_product(p),
-            "poster_copy": build_poster_copy(p, language=language),
+            "poster_copy": poster_copy,
         },
     }
 

@@ -34,7 +34,13 @@ class ComposeRequest(BaseModel):
     selling_point_2_x:Optional[int]=None;selling_point_2_y:Optional[int]=None;selling_point_2_font_size:Optional[int]=None
     cta_text_color:str="#FFF";cta_button_color:str="#111";cta_text_font_name:str="msyh";cta_text_art_style:Optional[str]="normal"
     cta_text_x:Optional[int]=None;cta_text_y:Optional[int]=None;cta_text_font_size:Optional[int]=None
-    text_stroke_enabled:bool=True;text_stroke_color:str="#FFF";text_stroke_width:int=2;text_shadow_enabled:bool=True
+    text_stroke_enabled:bool=False;text_stroke_color:str="#FFF";text_stroke_width:int=2;text_shadow_enabled:bool=True
+    auto_layout:bool=True
+    sd_refine:bool=False
+    sd_refine_strength:float=0.28
+    refine_enabled:bool=False
+    refine_engine:str="seedream"
+    product_hint:str=""
 
 @router.post("/upload/image")
 def upload_image(file:UploadFile=File(...),current_user:User=Depends(get_current_user)):
@@ -66,6 +72,12 @@ def api_compose(req:ComposeRequest,current_user:User=Depends(get_current_user),d
             "text_stroke_color": req.text_stroke_color,
             "text_stroke_width": req.text_stroke_width,
             "text_shadow_enabled": req.text_shadow_enabled,
+            "auto_layout": req.auto_layout,
+            "sd_refine": req.sd_refine or req.refine_enabled,
+            "sd_refine_strength": req.sd_refine_strength,
+            "refine_enabled": req.refine_enabled or req.sd_refine,
+            "refine_engine": req.refine_engine or "seedream",
+            "product_hint": req.product_hint,
             "text_layers": [
                 {
                     "key": "title",

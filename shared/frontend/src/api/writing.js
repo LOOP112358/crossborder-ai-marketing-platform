@@ -19,7 +19,10 @@ export function listProductCategories() {
 }
 
 
-export function getPosterCopy(productId, language = 'zh') {
-  return request.get(`/writing/products/${productId}/poster-copy`, { params: { language } })
+export function getPosterCopy(productId, language = 'zh', llm = false) {
+  return request.get(`/writing/products/${productId}/poster-copy`, {
+    params: { language, llm },
+    timeout: llm ? 60000 : 15000,
+  })
 }
 

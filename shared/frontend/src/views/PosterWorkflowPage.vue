@@ -19,7 +19,7 @@
         <el-button :disabled="step === 0" @click="step -= 1">上一步</el-button>
         <el-tag v-if="appStore.mattedUrl" type="success" effect="plain">已有抠图</el-tag>
         <el-tag v-if="appStore.category" type="info" effect="plain">类别：{{ appStore.category }}</el-tag>
-        <el-tag v-if="appStore.enhancedBgUrl" type="success" effect="plain">已有背景</el-tag>
+        <el-tag v-if="appStore.preferredBgUrl || appStore.enhancedBgUrl || appStore.seedreamBgUrl" type="success" effect="plain">已有背景</el-tag>
         <el-button type="primary" :disabled="step === 2" @click="goNext">下一步</el-button>
       </div>
 
@@ -56,7 +56,7 @@ function goNext() {
       return
     }
   }
-  if (step.value === 1 && !appStore.enhancedBgUrl) {
+  if (step.value === 1 && !(appStore.preferredBgUrl || appStore.enhancedBgUrl || appStore.seedreamBgUrl)) {
     ElMessage.warning('建议先生成背景，再进入海报合成')
   }
   if (step.value < 2) step.value += 1

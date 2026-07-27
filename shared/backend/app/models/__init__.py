@@ -5,12 +5,12 @@ from app.models.poster import Template, PosterHistory, Favorite
 from app.models.chat import (
     ChatSession, ChatMessage, ChatFeedback, SystemDailyStat, ModuleError, AboProduct,
 )
-from app.models.background import BackgroundHistory
+from app.models.background import BackgroundHistory, BackgroundCache
 
 __all__ = [
     "User", "WritingHistory",
     "MatteHistory",
     "Template", "PosterHistory", "Favorite",
     "ChatSession", "ChatMessage", "ChatFeedback", "SystemDailyStat", "ModuleError", "AboProduct",
-    "BackgroundHistory",
+    "BackgroundHistory", "BackgroundCache",
 ]
