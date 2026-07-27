@@ -39,7 +39,6 @@ SAMPLE_PRODUCTS = [
         "material": "Plastic, Memory Foam",
         "material_zh": "塑料, 记忆海绵",
         "color": "Black",
-        "image_path": "/static/demo-products/headphones.svg",
     },
     {
         "item_id": "B000000002",
@@ -54,7 +53,6 @@ SAMPLE_PRODUCTS = [
         "material": "Organic Cotton",
         "material_zh": "有机棉",
         "color": "White",
-        "image_path": "/static/demo-products/apparel.svg",
     },
     {
         "item_id": "B000000003",
@@ -69,7 +67,6 @@ SAMPLE_PRODUCTS = [
         "material": "Stainless Steel",
         "material_zh": "不锈钢",
         "color": "Silver",
-        "image_path": "/static/demo-products/bottle.svg",
     },
     {
         "item_id": "B000000004",
@@ -84,7 +81,6 @@ SAMPLE_PRODUCTS = [
         "material": "Aluminum, ABS",
         "material_zh": "铝合金, ABS",
         "color": "White",
-        "image_path": "/static/demo-products/home.svg",
     },
     {
         "item_id": "B000000005",
@@ -99,7 +95,6 @@ SAMPLE_PRODUCTS = [
         "material": "Mesh, Rubber",
         "material_zh": "网面, 橡胶",
         "color": "Blue",
-        "image_path": "/static/demo-products/shoes.svg",
     },
 ]
 
@@ -487,7 +482,6 @@ def _import_abo_products(db: Session) -> int:
                 material=p.get("material"),
                 material_zh=p.get("material_zh"),
                 color=p.get("color"),
-                image_path=p.get("image_path"),
                 faq_text=_build_faq(p),
             )
         )

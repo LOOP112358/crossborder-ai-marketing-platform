@@ -79,10 +79,6 @@ class AboProduct(Base):
     def image_url(self) -> str | None:
         if not self.image_path:
             return None
-        path = self.image_path.replace(chr(92), "/").strip()
-        # 允许种子数据直接写 https 占位图
-        if path.startswith("http://") or path.startswith("https://") or path.startswith("data:"):
-            return path
         # 由 main.py 挂载 /static/abo-images → ABO_IMAGES_DIR
-        return f"/static/abo-images/images/small/{path}"
+        return f"/static/abo-images/images/small/{self.image_path.replace(chr(92), '/')}"
 
