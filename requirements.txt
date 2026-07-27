@@ -1,13 +1,37 @@
+# ===== Web Framework =====
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+
+# ===== Database =====
 sqlalchemy==2.0.36
+
+# ===== Auth & Security =====
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+
+# ===== Data Validation & Config =====
 pydantic==2.10.3
 pydantic-settings==2.7.0
+python-dotenv>=1.0.0
+
+# ===== File & HTTP =====
 python-multipart==0.0.19
-bcrypt==4.0.1
 aiofiles==24.1.0
 httpx==0.28.1
+aiohttp>=3.8.0
+requests>=2.28.0
+
+# ===== Image Processing =====
 Pillow==11.0.0
 rembg>=2.0.0
+onnxruntime>=1.20.0
+
+# ===== AI / ML =====
+faiss-cpu>=1.7.0
+scikit-learn>=1.0.0
+numpy>=1.24.0
+
+# ===== Document Export =====
+openpyxl>=3.0.0
+reportlab>=4.0.0
