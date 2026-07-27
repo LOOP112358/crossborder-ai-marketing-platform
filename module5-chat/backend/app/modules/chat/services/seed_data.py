@@ -2,6 +2,8 @@
 import random
 from datetime import date, datetime, timedelta, time
 
+from typing import List, Optional
+
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -152,7 +154,7 @@ def _rand_dt(day: date) -> datetime:
     )
 
 
-def _ensure_demo_users(db: Session) -> list[User]:
+def _ensure_demo_users(db: Session) -> List[User]:
     """确保有可登录的演示账号 + 若干用户，让总用户数好看。"""
     specs = [
         ("demo", "demo123"),
@@ -160,8 +162,15 @@ def _ensure_demo_users(db: Session) -> list[User]:
         ("seller_bob", "pass1234"),
         ("ops_chen", "pass1234"),
         ("ops_wang", "pass1234"),
+        ("shop_li", "pass1234"),
+        ("shop_zhao", "pass1234"),
+        ("brand_sun", "pass1234"),
+        ("brand_zhou", "pass1234"),
+        ("agency_wu", "pass1234"),
+        ("agency_zheng", "pass1234"),
+        ("intern_xu", "pass1234"),
     ]
-    users: list[User] = []
+    users: List[User] = []
     for username, password in specs:
         user = db.query(User).filter(User.username == username).first()
         if not user:
@@ -176,6 +185,14 @@ def _ensure_demo_users(db: Session) -> list[User]:
     return users
 
 
+def _count_on_day(db: Session, table: str, day: date) -> int:
+    row = db.execute(
+        text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),
+        {"d": day.isoformat()},
+    ).scalar()
+    return int(row or 0)
+
+
 def _rebuild_daily_stats(db: Session, days: int = 7) -> None:
     """按历史表回填近 N 天 system_daily_stats，供趋势图使用。"""
     total_users = db.query(func.count(User.id)).scalar() or 0
@@ -183,22 +200,12 @@ def _rebuild_daily_stats(db: Session, days: int = 7) -> None:
 
     for i in range(days):
         d = today - timedelta(days=i)
-        d_str = d.isoformat()
-
-        def count_table(table: str) -> int:
-            row = db.execute(
-                text(f"SELECT COUNT(*) FROM {table} WHERE date(created_at) = :d"),
-                {"d": d_str},
-            ).scalar()
-            return int(row or 0)
-
-        writing = count_table("history_writing")
-        matte = count_table("history_matte")
-        bg = count_table("history_background")
-        poster = count_table("history_poster")
-        chat_msgs = count_table("chat_messages")
-        chat = chat_msgs // 2
-        errors = count_table("module_errors")
+        writing = _count_on_day(db, "history_writing", d)
+        matte = _count_on_day(db, "history_matte", d)
+        bg = _count_on_day(db, "history_background", d)
+        poster = _count_on_day(db, "history_poster", d)
+        chat = _count_on_day(db, "chat_messages", d) // 2
+        errors = _count_on_day(db, "module_errors", d)
 
         stat = db.query(SystemDailyStat).filter(SystemDailyStat.stat_date == d).first()
         if not stat:
@@ -215,156 +222,161 @@ def _rebuild_daily_stats(db: Session, days: int = 7) -> None:
     db.commit()
 
 
-def seed_demo_history(db: Session, *, force: bool = False) -> bool:
-    """填充各模块调用历史，让运营看板有可演示的数据。
+def _seed_activity_for_day(
+    db: Session,
+    day: date,
+    *,
+    user_ids: List[int],
+    primary_user_id: int,
+    template_id: Optional[int],
+    scale: float = 1.0,
+    tag: str = "demo",
+) -> None:
+    """为指定日期写入一批模块调用记录。"""
+    n_writing = max(3, int(random.randint(6, 12) * scale))
+    n_matte = max(3, int(random.randint(5, 11) * scale))
+    n_bg = max(2, int(random.randint(4, 9) * scale))
+    n_poster = max(2, int(random.randint(3, 8) * scale))
+    n_chat = max(2, int(random.randint(3, 7) * scale))
+    day_tag = day.isoformat().replace("-", "")
 
-    默认仅在几乎无历史时写入；force=True 时仍跳过已有演示标记行的重复刷入
-    （用 writing 条数判断）。
-    """
-    existing = db.query(func.count(WritingHistory.id)).scalar() or 0
-    if existing >= 8 and not force:
-        print(f"[seed] 调用历史已存在（文案 {existing} 条），跳过演示数据填充")
+    for _ in range(n_writing):
+        name, feats, platform, style = random.choice(WRITING_PRODUCTS)
+        db.add(
+            WritingHistory(
+                user_id=random.choice(user_ids),
+                product_name=name,
+                product_features=feats,
+                platform=platform,
+                title=f"【热卖】{name}｜跨境爆款推荐",
+                body=f"{name}主打{feats}，适合多平台投放，点击转化表现稳定。",
+                tags="跨境,爆款,AI文案",
+                language=random.choice(["zh", "en", "ja"]),
+                style=style,
+                created_at=_rand_dt(day),
+            )
+        )
+
+    for _ in range(n_matte):
+        cat_zh, cat_en = random.choice(CATEGORIES)
+        idx = random.randint(100, 999)
+        db.add(
+            MatteHistory(
+                user_id=random.choice(user_ids),
+                original_url=f"/static/matte/{tag}_orig_{day_tag}_{idx}.jpg",
+                matted_url=f"/static/matte/{tag}_matted_{day_tag}_{idx}.png",
+                category=cat_zh,
+                category_en=cat_en,
+                confidence=round(random.uniform(0.86, 0.99), 2),
+                attributes='{"demo": true}',
+                file_size=random.randint(80_000, 420_000),
+                created_at=_rand_dt(day),
+            )
+        )
+
+    for _ in range(n_bg):
+        cat_zh, _ = random.choice(CATEGORIES)
+        style = random.choice(BG_STYLES)
+        idx = random.randint(100, 999)
+        db.add(
+            BackgroundHistory(
+                user_id=random.choice(user_ids),
+                product_category=cat_zh,
+                style=style,
+                color_hint=random.choice(["暖色", "冷色", "中性", ""]),
+                prompt_used=f"{cat_zh} product on {style} background, ecommerce photography",
+                bg_url=f"/static/background/{tag}_bg_{day_tag}_{idx}.png",
+                enhanced_url=f"/static/background/{tag}_bg_hq_{day_tag}_{idx}.png",
+                scale_factor=2,
+                created_at=_rand_dt(day),
+            )
+        )
+
+    for _ in range(n_poster):
+        name, _, _, _ = random.choice(WRITING_PRODUCTS)
+        idx = random.randint(100, 999)
+        db.add(
+            PosterHistory(
+                user_id=random.choice(user_ids),
+                matted_url=f"/static/matte/{tag}_matted_{day_tag}_{idx}.png",
+                bg_url=f"/static/background/{tag}_bg_hq_{day_tag}_{idx}.png",
+                template_id=template_id,
+                poster_url=f"/static/poster/{tag}_poster_{day_tag}_{idx}.png",
+                title=name,
+                discount=random.choice(["20% OFF", "限时特惠", "买一送一", "Flash Sale"]),
+                price=random.choice(["$19.99", "$29.90", "¥99", "¥199"]),
+                ratio=random.choice(["1:1", "4:5", "9:16"]),
+                downloads=random.randint(0, 12),
+                created_at=_rand_dt(day),
+            )
+        )
+
+    for _ in range(n_chat):
+        q, a = random.choice(CHAT_QA)
+        session = ChatSession(
+            user_id=random.choice(user_ids),
+            title=q[:18] + ("…" if len(q) > 18 else ""),
+            created_at=_rand_dt(day),
+        )
+        db.add(session)
+        db.flush()
+        t0 = _rand_dt(day)
+        user_msg = ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=q,
+            language="zh",
+            created_at=t0,
+        )
+        asst_msg = ChatMessage(
+            session_id=session.id,
+            role="assistant",
+            content=a,
+            language="zh",
+            created_at=t0 + timedelta(seconds=random.randint(2, 20)),
+        )
+        db.add(user_msg)
+        db.add(asst_msg)
+        db.flush()
+        fb_type = "like" if random.random() < 0.82 else "dislike"
+        db.add(
+            ChatFeedback(
+                message_id=asst_msg.id,
+                user_id=primary_user_id,
+                feedback_type=fb_type,
+                created_at=asst_msg.created_at + timedelta(seconds=5),
+            )
+        )
+
+
+def ensure_today_demo_activity(db: Session) -> bool:
+    """跨天后「今日调用」会归零：若今天还没有记录，自动补一批。"""
+    today = date.today()
+    if _count_on_day(db, "history_writing", today) > 0:
         return False
 
     users = _ensure_demo_users(db)
     user_ids = [u.id for u in users]
-    primary = user_ids[0]
-
     templates = db.query(Template).filter(Template.is_active.is_(True)).all()
     template_id = templates[0].id if templates else None
 
-    today = date.today()
-    # 近 7 天：工作日调用多、周末略少
-    for day_offset in range(7):
-        day = today - timedelta(days=day_offset)
-        weekday = day.weekday()  # 0=周一
-        scale = 0.55 if weekday >= 5 else 1.0
-
-        n_writing = max(2, int(random.randint(4, 10) * scale))
-        n_matte = max(2, int(random.randint(3, 9) * scale))
-        n_bg = max(1, int(random.randint(2, 7) * scale))
-        n_poster = max(1, int(random.randint(2, 6) * scale))
-        n_chat = max(1, int(random.randint(2, 5) * scale))
-
-        for _ in range(n_writing):
-            name, feats, platform, style = random.choice(WRITING_PRODUCTS)
-            db.add(
-                WritingHistory(
-                    user_id=random.choice(user_ids),
-                    product_name=name,
-                    product_features=feats,
-                    platform=platform,
-                    title=f"【热卖】{name}｜跨境爆款推荐",
-                    body=f"{name}主打{feats}，适合多平台投放，点击转化表现稳定。",
-                    tags="跨境,爆款,AI文案",
-                    language=random.choice(["zh", "en", "ja"]),
-                    style=style,
-                    created_at=_rand_dt(day),
-                )
-            )
-
-        for _ in range(n_matte):
-            cat_zh, cat_en = random.choice(CATEGORIES)
-            idx = random.randint(100, 999)
-            db.add(
-                MatteHistory(
-                    user_id=random.choice(user_ids),
-                    original_url=f"/static/matte/demo_orig_{day_offset}_{idx}.jpg",
-                    matted_url=f"/static/matte/demo_matted_{day_offset}_{idx}.png",
-                    category=cat_zh,
-                    category_en=cat_en,
-                    confidence=round(random.uniform(0.86, 0.99), 2),
-                    attributes='{"demo": true}',
-                    file_size=random.randint(80_000, 420_000),
-                    created_at=_rand_dt(day),
-                )
-            )
-
-        for _ in range(n_bg):
-            cat_zh, _ = random.choice(CATEGORIES)
-            style = random.choice(BG_STYLES)
-            idx = random.randint(100, 999)
-            db.add(
-                BackgroundHistory(
-                    user_id=random.choice(user_ids),
-                    product_category=cat_zh,
-                    style=style,
-                    color_hint=random.choice(["暖色", "冷色", "中性", ""]),
-                    prompt_used=f"{cat_zh} product on {style} background, ecommerce photography",
-                    bg_url=f"/static/background/demo_bg_{day_offset}_{idx}.png",
-                    enhanced_url=f"/static/background/demo_bg_hq_{day_offset}_{idx}.png",
-                    scale_factor=2,
-                    created_at=_rand_dt(day),
-                )
-            )
-
-        for _ in range(n_poster):
-            name, _, _, _ = random.choice(WRITING_PRODUCTS)
-            idx = random.randint(100, 999)
-            db.add(
-                PosterHistory(
-                    user_id=random.choice(user_ids),
-                    matted_url=f"/static/matte/demo_matted_{day_offset}_{idx}.png",
-                    bg_url=f"/static/background/demo_bg_hq_{day_offset}_{idx}.png",
-                    template_id=template_id,
-                    poster_url=f"/static/poster/demo_poster_{day_offset}_{idx}.png",
-                    title=name,
-                    discount=random.choice(["20% OFF", "限时特惠", "买一送一", "Flash Sale"]),
-                    price=random.choice(["$19.99", "$29.90", "¥99", "¥199"]),
-                    ratio=random.choice(["1:1", "4:5", "9:16"]),
-                    downloads=random.randint(0, 12),
-                    created_at=_rand_dt(day),
-                )
-            )
-
-        for _ in range(n_chat):
-            q, a = random.choice(CHAT_QA)
-            session = ChatSession(
-                user_id=random.choice(user_ids),
-                title=q[:18] + ("…" if len(q) > 18 else ""),
-                created_at=_rand_dt(day),
-            )
-            db.add(session)
-            db.flush()
-            t0 = _rand_dt(day)
-            user_msg = ChatMessage(
-                session_id=session.id,
-                role="user",
-                content=q,
-                language="zh",
-                created_at=t0,
-            )
-            asst_msg = ChatMessage(
-                session_id=session.id,
-                role="assistant",
-                content=a,
-                language="zh",
-                created_at=t0 + timedelta(seconds=random.randint(2, 20)),
-            )
-            db.add(user_msg)
-            db.add(asst_msg)
-            db.flush()
-            # 多数点赞，少量点踩，满意度好看
-            fb_type = "like" if random.random() < 0.82 else "dislike"
-            db.add(
-                ChatFeedback(
-                    message_id=asst_msg.id,
-                    user_id=primary,
-                    feedback_type=fb_type,
-                    created_at=asst_msg.created_at + timedelta(seconds=5),
-                )
-            )
-
-    # 少量错误记录：背景模块略高，便于演示「异常预警」，但不全盘告警
-    for day_offset in range(3):
-        day = today - timedelta(days=day_offset)
-        db.add(
-            ModuleError(
-                module_name="background",
-                error_message="上游图像 API 超时（演示数据）",
-                created_at=_rand_dt(day),
-            )
+    _seed_activity_for_day(
+        db,
+        today,
+        user_ids=user_ids,
+        primary_user_id=user_ids[0],
+        template_id=template_id,
+        scale=1.15,
+        tag="today",
+    )
+    # 今日少量错误，方便异常预警有内容但不刷屏
+    db.add(
+        ModuleError(
+            module_name="background",
+            error_message="上游图像 API 超时（演示数据）",
+            created_at=_rand_dt(today),
         )
+    )
     db.add(
         ModuleError(
             module_name="matte",
@@ -372,11 +384,72 @@ def seed_demo_history(db: Session, *, force: bool = False) -> bool:
             created_at=_rand_dt(today),
         )
     )
-
     db.commit()
     _rebuild_daily_stats(db, days=7)
-    print("[seed] 已写入近 7 天调用历史（文案/抠图/背景/海报/客服）与看板日统计")
+    print(f"[seed] 已补齐今日({today.isoformat()})演示调用数据")
     return True
+
+
+def seed_demo_history(db: Session, *, force: bool = False) -> bool:
+    """填充各模块调用历史，让运营看板有可演示的数据。
+
+    默认仅在几乎无历史时写入；force=True 时再追加近 7 天。
+    无论是否跳过，都会确保「今天」有数据（跨天自动补齐）。
+    """
+    existing = db.query(func.count(WritingHistory.id)).scalar() or 0
+    wrote = False
+
+    if existing >= 8 and not force:
+        print(f"[seed] 历史调用已存在（文案 {existing} 条），检查今日数据…")
+    else:
+        users = _ensure_demo_users(db)
+        user_ids = [u.id for u in users]
+        primary = user_ids[0]
+        templates = db.query(Template).filter(Template.is_active.is_(True)).all()
+        template_id = templates[0].id if templates else None
+
+        today = date.today()
+        for day_offset in range(7):
+            day = today - timedelta(days=day_offset)
+            # 已有今天数据时跳过该天，避免 force 以外重复刷
+            if not force and _count_on_day(db, "history_writing", day) > 0:
+                continue
+            weekday = day.weekday()
+            scale = 0.55 if weekday >= 5 else 1.0
+            _seed_activity_for_day(
+                db,
+                day,
+                user_ids=user_ids,
+                primary_user_id=primary,
+                template_id=template_id,
+                scale=scale,
+                tag=f"d{day_offset}",
+            )
+
+        for day_offset in range(3):
+            day = today - timedelta(days=day_offset)
+            db.add(
+                ModuleError(
+                    module_name="background",
+                    error_message="上游图像 API 超时（演示数据）",
+                    created_at=_rand_dt(day),
+                )
+            )
+        db.add(
+            ModuleError(
+                module_name="matte",
+                error_message="上传图片格式不支持（演示数据）",
+                created_at=_rand_dt(today),
+            )
+        )
+        db.commit()
+        _rebuild_daily_stats(db, days=7)
+        print("[seed] 已写入近 7 天调用历史（文案/抠图/背景/海报/客服）与看板日统计")
+        wrote = True
+
+    if ensure_today_demo_activity(db):
+        wrote = True
+    return wrote
 
 
 def _import_abo_products(db: Session) -> int:
