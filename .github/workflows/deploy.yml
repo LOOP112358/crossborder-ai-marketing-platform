@@ -32,9 +32,22 @@ jobs:
 
             echo "[4/5] Restart backend..."
             sudo systemctl restart crossborder.service
+            sleep 3
+            if ! systemctl is-active --quiet crossborder.service; then
+              echo "Backend service failed to start!"
+              journalctl -u crossborder.service -n 40 --no-pager || true
+              exit 1
+            fi
 
-            echo "[5/5] Reload Nginx..."
+            echo "[5/5] Reload Nginx + health check..."
             sudo nginx -s reload
+            sleep 2
+            if ! curl -fsS "http://127.0.0.1:8000/api/health" >/dev/null; then
+              echo "Health check failed!"
+              journalctl -u crossborder.service -n 40 --no-pager || true
+              exit 1
+            fi
 
             echo "Deploy done!"
             systemctl status crossborder.service --no-pager | head -5
+            curl -fsS "http://127.0.0.1:8000/api/health" || true

@@ -2,6 +2,8 @@
 import random
 from datetime import date, datetime, timedelta, time
 
+from typing import List, Optional
+
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -152,7 +154,7 @@ def _rand_dt(day: date) -> datetime:
     )
 
 
-def _ensure_demo_users(db: Session) -> list[User]:
+def _ensure_demo_users(db: Session) -> List[User]:
     """确保有可登录的演示账号 + 若干用户，让总用户数好看。"""
     specs = [
         ("demo", "demo123"),
@@ -168,7 +170,7 @@ def _ensure_demo_users(db: Session) -> list[User]:
         ("agency_zheng", "pass1234"),
         ("intern_xu", "pass1234"),
     ]
-    users: list[User] = []
+    users: List[User] = []
     for username, password in specs:
         user = db.query(User).filter(User.username == username).first()
         if not user:
@@ -224,9 +226,9 @@ def _seed_activity_for_day(
     db: Session,
     day: date,
     *,
-    user_ids: list[int],
+    user_ids: List[int],
     primary_user_id: int,
-    template_id: int | None,
+    template_id: Optional[int],
     scale: float = 1.0,
     tag: str = "demo",
 ) -> None:
