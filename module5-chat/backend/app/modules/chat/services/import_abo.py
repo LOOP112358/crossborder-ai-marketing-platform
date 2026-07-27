@@ -13,9 +13,9 @@ import argparse
 import csv
 import gzip
 import json
-from functools import lru_cache
+import sqlite3
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,10 @@ from app.modules.chat.services.config import (
     ABO_METADATA_DIR,
 )
 from app.modules.chat.services.rag_service import build_global_abo_index
+
+# 磁盘索引：避免把整份 images.csv 装进 dict（云主机易 OOM / exit 137）
+_IMAGE_MAP_CONN: Optional[sqlite3.Connection] = None
+_IMAGE_MAP_DB = ABO_IMAGES_DIR / "images" / "metadata" / "image_id_map.sqlite"
 
 
 def _pick_lang(items: list, tag: str = "en_US") -> str:
@@ -89,26 +93,105 @@ def _open_images_csv():
     return None
 
 
-@lru_cache(maxsize=1)
-def load_image_id_map() -> Dict[str, str]:
+def _image_map_ready(db_path: Path) -> bool:
+    if not db_path.exists() or db_path.stat().st_size < 1024:
+        return False
+    try:
+        conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT COUNT(*) FROM map").fetchone()
+            return bool(row and row[0] > 0)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
+def ensure_image_id_db(force: bool = False) -> Optional[Path]:
     """
-    image_id → 相对 path（如 14/14fe8812.jpg）
+    把 images.csv 流式写入 SQLite（image_id → path），避免整表进内存。
     对应磁盘文件：ABO_IMAGES_DIR/images/small/{path}
     """
-    mapping: Dict[str, str] = {}
+    db_path = _IMAGE_MAP_DB
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    if not force and _image_map_ready(db_path):
+        print(f"[abo] 使用已有图片索引 {db_path}")
+        return db_path
+
     fh = _open_images_csv()
     if fh is None:
         print(f"[warn] 未找到 images.csv / images.csv.gz 于 {ABO_IMAGES_DIR / 'images' / 'metadata'}")
-        return mapping
-    with fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            image_id = (row.get("image_id") or "").strip()
-            path = (row.get("path") or "").strip().replace("\\", "/")
-            if image_id and path:
-                mapping[image_id] = path
-    print(f"[abo] 已加载图片映射 {len(mapping)} 条")
-    return mapping
+        return None
+
+    tmp_path = db_path.with_suffix(".sqlite.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    print(f"[abo] 构建图片索引（低内存流式）→ {db_path.name} …")
+    conn = sqlite3.connect(str(tmp_path))
+    try:
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("CREATE TABLE map (image_id TEXT PRIMARY KEY, path TEXT NOT NULL)")
+        batch = []
+        n = 0
+        with fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                image_id = (row.get("image_id") or "").strip()
+                path = (row.get("path") or "").strip().replace("\\", "/")
+                if not image_id or not path:
+                    continue
+                batch.append((image_id, path))
+                if len(batch) >= 5000:
+                    conn.executemany("INSERT OR REPLACE INTO map(image_id, path) VALUES (?, ?)", batch)
+                    n += len(batch)
+                    batch.clear()
+                    if n % 100000 == 0:
+                        conn.commit()
+                        print(f"  已写入 {n} 条…")
+            if batch:
+                conn.executemany("INSERT OR REPLACE INTO map(image_id, path) VALUES (?, ?)", batch)
+                n += len(batch)
+                batch.clear()
+        conn.commit()
+    finally:
+        conn.close()
+        fh.close()
+
+    if db_path.exists():
+        db_path.unlink()
+    tmp_path.replace(db_path)
+    print(f"[abo] 图片索引完成，共 {n} 条")
+    return db_path
+
+
+def _get_image_map_conn() -> Optional[sqlite3.Connection]:
+    global _IMAGE_MAP_CONN
+    if _IMAGE_MAP_CONN is not None:
+        return _IMAGE_MAP_CONN
+    db_path = ensure_image_id_db()
+    if not db_path:
+        return None
+    _IMAGE_MAP_CONN = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
+    _IMAGE_MAP_CONN.row_factory = sqlite3.Row
+    return _IMAGE_MAP_CONN
+
+
+def lookup_image_path(image_id: str) -> Optional[str]:
+    mid = (image_id or "").strip()
+    if not mid:
+        return None
+    conn = _get_image_map_conn()
+    if conn is None:
+        return None
+    row = conn.execute("SELECT path FROM map WHERE image_id = ? LIMIT 1", (mid,)).fetchone()
+    return row["path"] if row else None
+
+
+def load_image_id_map() -> None:
+    """兼容旧调用：预热磁盘索引（不再返回巨型 dict）。"""
+    ensure_image_id_db()
 
 
 def resolve_image_fields(main_image_id: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -116,7 +199,7 @@ def resolve_image_fields(main_image_id: Optional[str]) -> Tuple[Optional[str], O
     if not main_image_id:
         return None, None, None
     mid = str(main_image_id).strip()
-    path = load_image_id_map().get(mid)
+    path = lookup_image_path(mid)
     if not path:
         # 兼容旧约定：直接用 id.jpg
         candidate = ABO_IMAGES_SMALL_DIR / mid[:2].lower() / f"{mid}.jpg"
@@ -136,7 +219,7 @@ def resolve_image_url(main_image_id: Optional[str]) -> Optional[str]:
     return url
 
 
-def _build_faq(record: dict) -> dict:
+def _build_faq(record: dict, *, resolve_images: bool = True) -> dict:
     item_id = record.get("item_id", "")
     item_name = _pick_lang(record.get("item_name", []))
     item_name_zh = _pick_lang(record.get("item_name", []), "zh_CN")
@@ -167,7 +250,9 @@ def _build_faq(record: dict) -> dict:
     category = _extract_category(record)
     model_name = _pick_lang(record.get("model_name", []))
     main_image_id = record.get("main_image_id") or ""
-    _, image_path, _ = resolve_image_fields(main_image_id)
+    image_path = None
+    if resolve_images:
+        _, image_path, _ = resolve_image_fields(main_image_id)
 
     faq_text = "\n".join(
         [
@@ -204,9 +289,15 @@ def _build_faq(record: dict) -> dict:
     }
 
 
-def import_abo_listings(db: Session, limit: int = ABO_IMPORT_LIMIT) -> int:
-    # 预热映射表
-    load_image_id_map()
+def import_abo_listings(
+    db: Session,
+    limit: int = ABO_IMPORT_LIMIT,
+    *,
+    resolve_images: bool = True,
+    rebuild_index: bool = True,
+) -> int:
+    if resolve_images:
+        load_image_id_map()
 
     metadata_dir = ABO_METADATA_DIR
     if not metadata_dir.exists():
@@ -240,7 +331,7 @@ def import_abo_listings(db: Session, limit: int = ABO_IMPORT_LIMIT) -> int:
                 item_id = record.get("item_id")
                 if not item_id or item_id in seen_ids:
                     continue
-                data = _build_faq(record)
+                data = _build_faq(record, resolve_images=resolve_images)
                 if not data["item_name"]:
                     continue
                 db.add(
@@ -263,7 +354,7 @@ def import_abo_listings(db: Session, limit: int = ABO_IMPORT_LIMIT) -> int:
                     with_image += 1
                 seen_ids.add(item_id)
                 imported += 1
-                if imported % 500 == 0:
+                if imported % 200 == 0:
                     db.commit()
                     print(f"  已导入 {imported} 条（含图 {with_image}）...")
         if imported >= limit:
@@ -273,14 +364,23 @@ def import_abo_listings(db: Session, limit: int = ABO_IMPORT_LIMIT) -> int:
     print(f"[abo] 本次新增 {imported} 条，其中有图 {with_image} 条（库内原有 {len(existing)} 条）")
 
     total = db.query(AboProduct).count()
-    if total > 0:
-        products = db.query(AboProduct).all()
-        chunks = [p.faq_text for p in products if p.faq_text]
-        if chunks:
-            build_global_abo_index(chunks)
-            print(f"[abo] FAISS 全局索引已重建，共 {len(chunks)} 条")
-
+    if rebuild_index and total > 0:
+        _rebuild_faiss(db)
     return total
+
+
+def _rebuild_faiss(db: Session) -> None:
+    """分批取 faq_text，降低峰值内存。"""
+    chunks = []
+    q = db.query(AboProduct.faq_text).filter(AboProduct.faq_text.isnot(None), AboProduct.faq_text != "")
+    for (text,) in q.yield_per(200):
+        if text:
+            chunks.append(text)
+    if not chunks:
+        print("[abo] 无 FAQ 文本，跳过 FAISS")
+        return
+    build_global_abo_index(chunks)
+    print(f"[abo] FAISS 全局索引已重建，共 {len(chunks)} 条")
 
 
 def backfill_abo_images(db: Session) -> int:
@@ -331,7 +431,7 @@ def backfill_abo_images(db: Session) -> int:
                         changed = True
                 if changed:
                     updated += 1
-                if updated and updated % 500 == 0:
+                if updated and updated % 200 == 0:
                     db.commit()
                     print(f"  已更新 {updated} 条...")
     db.commit()
@@ -341,10 +441,14 @@ def backfill_abo_images(db: Session) -> int:
 
 
 def main():
+    global _IMAGE_MAP_CONN
     parser = argparse.ArgumentParser(description="导入 ABO 商品 FAQ 知识库")
     parser.add_argument("--limit", type=int, default=ABO_IMPORT_LIMIT)
     parser.add_argument("--rebuild-only", action="store_true", help="只重建 FAISS，不重新读 gzip")
     parser.add_argument("--backfill-images", action="store_true", help="仅为已有商品回填图片路径")
+    parser.add_argument("--skip-index", action="store_true", help="导入时不重建 FAISS（省内存）")
+    parser.add_argument("--skip-images", action="store_true", help="导入时不解析图片路径（稍后 --backfill-images）")
+    parser.add_argument("--rebuild-image-index", action="store_true", help="强制重建 image_id SQLite 索引")
     args = parser.parse_args()
 
     from app.core.database import SessionLocal, init_db
@@ -352,19 +456,23 @@ def main():
     init_db()
     db = SessionLocal()
     try:
-        if args.backfill_images:
+        if args.rebuild_image_index:
+            ensure_image_id_db(force=True)
+        elif args.backfill_images:
             backfill_abo_images(db)
         elif args.rebuild_only:
-            products = db.query(AboProduct).all()
-            chunks = [p.faq_text for p in products if p.faq_text]
-            if chunks:
-                build_global_abo_index(chunks)
-                print(f"[abo] 仅重建索引，共 {len(chunks)} 条")
-            else:
-                print("[abo] 库中无商品，无法重建")
+            _rebuild_faiss(db)
         else:
-            import_abo_listings(db, limit=args.limit)
+            import_abo_listings(
+                db,
+                limit=args.limit,
+                resolve_images=not args.skip_images,
+                rebuild_index=not args.skip_index,
+            )
     finally:
+        if _IMAGE_MAP_CONN is not None:
+            _IMAGE_MAP_CONN.close()
+            _IMAGE_MAP_CONN = None
         db.close()
 
 

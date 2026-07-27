@@ -15,7 +15,7 @@ jobs:
           host: 152.136.27.117
           username: root
           password: ${{ secrets.DEPLOY_PASSWORD }}
-          command_timeout: 150m
+          command_timeout: 180m
           script: |
             set -euo pipefail
 
@@ -24,14 +24,27 @@ jobs:
             LISTINGS_URL=https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-listings.tar
             IMAGES_URL=https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-images-small.tar
 
-            echo "[0] Disk space:"
+            echo "[0] Disk / memory:"
             df -h /opt || df -h /
+            free -h || true
 
             avail_kb=$(df -Pk /opt 2>/dev/null | awk 'NR==2{print $4}')
             if [ -n "${avail_kb:-}" ] && [ "$avail_kb" -lt 7000000 ]; then
               echo "ERROR: need ~7GB free under /opt (have ${avail_kb}KB). Abort."
               exit 1
             fi
+
+            # 小内存机器：加 2G swap，避免 import 被 OOM kill (exit 137)
+            if ! swapon --show | grep -q .; then
+              echo "[0b] Creating 2G swapfile..."
+              if [ ! -f /swapfile ]; then
+                fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+                chmod 600 /swapfile
+                mkswap /swapfile
+              fi
+              swapon /swapfile || true
+            fi
+            free -h || true
 
             mkdir -p "$DATA_DIR"
             cd "$DATA_DIR"
@@ -78,15 +91,26 @@ jobs:
             echo "  ABO paths written:"
             grep -E '^ABO_' "$ENV_FILE" || true
 
-            echo "[6] Import listings + backfill images..."
+            echo "[6] Stop app to free RAM, then import in low-memory steps..."
+            systemctl stop crossborder.service || true
+            sleep 2
+            sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+            free -h || true
+
             cd "$APP_DIR"
+            # 拉最新代码（含低内存 import 修复）
+            git fetch origin main || true
+            git reset --hard origin/main || true
             # shellcheck disable=SC1091
             source venv/bin/activate
-            python scripts/import_abo_kb.py --limit 3000
+
+            # 分步：先只导 listings，再建图片索引+回填，最后重建 FAISS
+            python scripts/import_abo_kb.py --limit 3000 --skip-images --skip-index
             python scripts/import_abo_kb.py --backfill-images
+            python scripts/import_abo_kb.py --rebuild-only
 
             echo "[7] Restart backend + nginx..."
-            systemctl restart crossborder.service
+            systemctl start crossborder.service
             sleep 4
             if ! systemctl is-active --quiet crossborder.service; then
               journalctl -u crossborder.service -n 50 --no-pager || true
@@ -98,3 +122,14 @@ jobs:
             echo "ABO setup done."
             ls -ld "$DATA_DIR/listings/metadata" "$DATA_DIR/images/small" || true
             du -sh "$DATA_DIR" || true
+            # 有图数量抽查
+            python - <<'PY'
+            from app.core.database import SessionLocal, init_db
+            from app.models.chat import AboProduct
+            init_db()
+            db = SessionLocal()
+            total = db.query(AboProduct).count()
+            with_img = db.query(AboProduct).filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "").count()
+            print(f"DB products={total} with_image_path={with_img}")
+            db.close()
+            PY
