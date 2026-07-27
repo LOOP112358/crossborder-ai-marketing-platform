@@ -181,7 +181,8 @@ def format_product_answer(question: str, products: List[AboProduct], language: s
             if bullets:
                 tip = bullets.split("|")[0].strip()
                 if tip:
-                    lines.append(f"- Highlight: {tip[:120]}")
+                    tip = tip.replace("**", "").strip()
+                    lines.append(f"- Highlight: **{tip[:120]}**")
             lines.append("")
         lines.append("Ask a brand name for more details.")
     else:
@@ -205,10 +206,67 @@ def format_product_answer(question: str, products: List[AboProduct], language: s
             if bullets:
                 tip = bullets.replace("；", "|").split("|")[0].strip()
                 if tip:
-                    lines.append(f"- 卖点：{tip[:120]}")
+                    # 去掉卖点里自带的松散 **，统一由我们加粗，避免「** 文字**」渲染失败
+                    tip = tip.replace("**", "").strip()
+                    lines.append(f"- 卖点：**{tip[:120]}**")
             lines.append("")
         lines.append("可以继续问某个品牌，或说「还有别的吗」。")
     return "\n".join(lines).strip()
+
+
+def _demo_image_for_type(product_type: str | None) -> str:
+    pt = (product_type or "").upper()
+    if any(k in pt for k in ("HEADPHONE", "EARPHONE", "EARBUD", "AUDIO", "ELECTRONIC")):
+        name = "headphones.svg"
+    elif any(k in pt for k in ("SHOE", "FOOTWEAR", "SANDAL", "BOOT", "SNEAKER")):
+        name = "shoes.svg"
+    elif any(k in pt for k in ("BOTTLE", "KITCHEN", "CUP", "MUG")):
+        name = "bottle.svg"
+    elif any(k in pt for k in ("APPAREL", "SHIRT", "DRESS", "CLOTH")):
+        name = "apparel.svg"
+    elif any(k in pt for k in ("HOME", "LAMP", "FURNITURE", "SOFA", "CHAIR")):
+        name = "home.svg"
+    else:
+        name = "product.svg"
+    return f"/static/demo-products/{name}"
+
+
+def _placeholder_image_url(p: AboProduct) -> str:
+    """无 ABO 本地图时用仓库内演示图，避免卡片只显示首字母。"""
+    return _demo_image_for_type(getattr(p, "product_type", None))
+
+
+def resolve_card_image_url(p: AboProduct) -> str:
+    """优先真实 ABO 图（磁盘存在才用）；否则用演示占位图。"""
+    path = (getattr(p, "image_path", None) or "").strip().replace("\\", "/")
+    if path.startswith("http://") or path.startswith("https://") or path.startswith("data:"):
+        return path
+    if path.startswith("/static/"):
+        return path
+
+    if path:
+        try:
+            from app.modules.chat.services.config import ABO_IMAGES_SMALL_DIR
+
+            disk = ABO_IMAGES_SMALL_DIR / path
+            if disk.exists():
+                return f"/static/abo-images/images/small/{path}"
+        except Exception:
+            pass
+
+    mid = (getattr(p, "main_image_id", None) or "").strip()
+    if mid:
+        try:
+            from app.modules.chat.services.config import ABO_IMAGES_SMALL_DIR
+
+            rel = f"{mid[:2].lower()}/{mid}.jpg"
+            disk = ABO_IMAGES_SMALL_DIR / rel
+            if disk.exists():
+                return f"/static/abo-images/images/small/{rel}"
+        except Exception:
+            pass
+
+    return _placeholder_image_url(p)
 
 
 def product_to_card(p: AboProduct) -> dict:
@@ -224,7 +282,7 @@ def product_to_card(p: AboProduct) -> dict:
         "product_type": p.product_type or "",
         "color": p.color or "",
         "highlights": highlights,
-        "image_url": p.image_url,
+        "image_url": resolve_card_image_url(p),
     }
 
 

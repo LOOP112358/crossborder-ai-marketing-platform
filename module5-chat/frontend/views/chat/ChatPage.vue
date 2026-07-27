@@ -58,10 +58,24 @@
                   <div v-else class="msg-text">{{ m.content }}</div>
 
                   <div v-if="m.products?.length" class="product-strip">
-                    <div v-for="p in m.products" :key="p.item_id" class="product-card">
+                    <div
+                      v-for="p in m.products"
+                      :key="p.item_id"
+                      class="product-card"
+                      :data-id="p.item_id"
+                    >
                       <div class="product-thumb" :style="thumbStyle(p)">
-                        <img v-if="p.image_url" :src="p.image_url" :alt="p.name" @error="onImgError" />
-                        <span v-else class="thumb-fallback">{{ (p.name || '?').slice(0, 1) }}</span>
+                        <img
+                          v-if="resolveProductImage(p)"
+                          :src="resolveProductImage(p)"
+                          :alt="p.name"
+                          loading="lazy"
+                          @error="onImgError($event, p)"
+                        />
+                        <span
+                          v-show="!resolveProductImage(p)"
+                          class="thumb-fallback"
+                        >{{ (p.name || '?').slice(0, 1).toUpperCase() }}</span>
                       </div>
                       <div class="product-body">
                         <div class="product-name">{{ p.name }}</div>
@@ -149,6 +163,7 @@ const inputText = ref('')
 const loading = ref(false)
 const uploading = ref(false)
 const msgArea = ref(null)
+const brokenImgIds = ref(new Set())
 
 const quickPrompts = [
   '推荐几款蓝牙耳机',
@@ -169,14 +184,54 @@ function thumbStyle(p) {
   return { '--thumb': THUMB_COLORS[i] }
 }
 
-function onImgError(e) {
-  e.target.style.display = 'none'
+function demoImageForProduct(p) {
+  const pt = String(p?.product_type || '').toUpperCase()
+  let name = 'product.svg'
+  if (/HEADPHONE|EARPHONE|EARBUD|AUDIO|ELECTRONIC/.test(pt)) name = 'headphones.svg'
+  else if (/SHOE|FOOTWEAR|SANDAL|BOOT|SNEAKER/.test(pt)) name = 'shoes.svg'
+  else if (/BOTTLE|KITCHEN|CUP|MUG/.test(pt)) name = 'bottle.svg'
+  else if (/APPAREL|SHIRT|DRESS|CLOTH/.test(pt)) name = 'apparel.svg'
+  else if (/HOME|LAMP|FURNITURE|SOFA|CHAIR/.test(pt)) name = 'home.svg'
+  return `/static/demo-products/${name}`
+}
+
+function resolveProductImage(p) {
+  if (!p || brokenImgIds.value.has(String(p.item_id))) return ''
+  const url = (p.image_url || '').trim()
+  return url || demoImageForProduct(p)
+}
+
+function onImgError(e, p) {
+  const img = e?.target
+  if (!img) return
+  if (!img.dataset.fallbackTried) {
+    img.dataset.fallbackTried = '1'
+    img.src = demoImageForProduct(p)
+    return
+  }
+  img.style.display = 'none'
+  const id = String(p?.item_id || '')
+  if (!id) return
+  const next = new Set(brokenImgIds.value)
+  next.add(id)
+  brokenImgIds.value = next
+}
+
+/** 修复模型常写的「** 文字**」（星号后空格导致无法加粗） */
+function normalizeMarkdown(text) {
+  let s = String(text || '')
+  // **  content** / **content ** / ** content ** → **content**
+  s = s.replace(/\*\*[ \t]+([^*\n]+?)\*\*/g, (_, inner) => `**${String(inner).trim()}**`)
+  s = s.replace(/\*\*([^*\n]+?)[ \t]+\*\*/g, (_, inner) => `**${String(inner).trim()}**`)
+  s = s.replace(/__[ \t]+([^_\n]+?)__/g, (_, inner) => `**${String(inner).trim()}**`)
+  s = s.replace(/＊＊/g, '**')
+  return s
 }
 
 function renderMarkdown(text) {
   if (!text) return ''
   try {
-    return marked.parse(String(text))
+    return marked.parse(normalizeMarkdown(text))
   } catch {
     return String(text).replace(/</g, '&lt;')
   }
@@ -493,7 +548,10 @@ onMounted(loadSessions)
   font-size: 1.05em;
   font-weight: 600;
 }
-.msg-md :deep(strong) { color: #1f4f4b; font-weight: 650; }
+.msg-md :deep(strong), .msg-md :deep(b) {
+  color: #143834;
+  font-weight: 700;
+}
 .msg-md :deep(code) {
   background: rgba(44, 58, 66, 0.08);
   padding: 1px 5px;
