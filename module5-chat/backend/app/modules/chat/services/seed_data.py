@@ -6,7 +6,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.chat import User, AboProduct
+from app.models.user import User
+from app.models.chat import AboProduct
 from app.modules.chat.services.rag_service import build_global_abo_index
 
 
