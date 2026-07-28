@@ -13,6 +13,10 @@
           <el-icon><HomeFilled /></el-icon>
           <span>{{ $t('nav.home') }}</span>
         </el-menu-item>
+        <el-menu-item index="/catalog">
+          <el-icon><Goods /></el-icon>
+          <span>{{ $t('nav.catalog') }}</span>
+        </el-menu-item>
         <el-menu-item index="/writing">
           <el-icon><Edit /></el-icon>
           <span>{{ $t('nav.writing') }}</span>
@@ -105,6 +109,7 @@ const activeMenu = computed(() => {
 const currentPageTitle = computed(() => {
   const nameMap = {
     '/home': 'nav.home',
+    '/catalog': 'nav.catalog',
     '/writing': 'nav.writing',
     '/poster-workflow': 'AI海报工作流',
     '/my-works': '我的作品',
@@ -226,6 +231,11 @@ function handleLogout() {
 .content {
   padding: 0 !important;
   min-height: calc(100vh - 120px);
+  min-width: 0;
+  overflow-x: clip;
+}
+.main-layout :deep(.el-container) {
+  min-width: 0;
 }
 @media (max-width: 900px) {
   .main-layout { display: block; padding: 10px; }

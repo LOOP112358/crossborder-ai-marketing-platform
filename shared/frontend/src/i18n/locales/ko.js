@@ -17,6 +17,7 @@ export default {
   },
   nav: {
     home: '대시보드',
+    catalog: '상품 선정',
     writing: '카피라이팅',
     matte: '이미지 배경제거',
     background: '배경 생성',
@@ -53,6 +54,8 @@ export default {
   home: {
     welcome: 'AI 전자상거래 마케팅 플랫폼에 오신 것을 환영합니다',
     welcomeDesc: '제품 프로모션을 위한 올인원 마케팅 도구',
+    catalogName: '상품 선정 센터',
+    catalogDesc: 'ABO 상품을 고른 뒤 카피·포스터 작업으로 바로 이동',
     writingName: '카피라이팅',
     writingDesc: 'AI 기반 멀티플랫폼·다국어 마케팅 카피 자동 생성',
     matteName: '이미지 배경제거',

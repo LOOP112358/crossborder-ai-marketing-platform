@@ -28,6 +28,12 @@ const routes = [
         meta: { title: '首页' },
       },
       {
+        path: 'catalog',
+        name: 'Catalog',
+        component: () => import('@m1/views/catalog/CatalogPage.vue'),
+        meta: { title: '智能选品中心' },
+      },
+      {
         path: 'writing',
         name: 'Writing',
         component: () => import('@m1/views/writing/WritingPage.vue'),

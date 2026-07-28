@@ -17,6 +17,7 @@ from app.modules.writing.product_utils import (
     build_poster_copy,
     TYPE_ZH,
 )
+from app.modules.writing.campaign_assistant import list_campaigns, recommend_campaign
 
 router = APIRouter(prefix="/api/writing", tags=["文案生成"])
 
@@ -99,19 +100,49 @@ def _diverse_sample(db: Session, has_image: bool, limit: int) -> list:
     return collected[:limit]
 
 
-@router.get("/products/categories", response_model=dict)
-def list_categories(
+@router.get("/campaigns", response_model=dict)
+def get_campaigns(current_user: User = Depends(get_current_user)):
+    """活动选品助手：预设活动主题列表。"""
+    return {"code": 200, "message": "ok", "data": {"items": list_campaigns()}}
+
+
+@router.post("/campaigns/recommend", response_model=dict)
+def post_campaign_recommend(
+    payload: dict,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """返回有图商品的品类分布，供前端快捷筛选。"""
+    """按活动主题从 ABO 货盘生成选品方案（评分 + 营销角度）。"""
+    campaign_id = str(payload.get("campaign_id") or "black_friday")
+    theme = str(payload.get("theme") or "")
+    market = str(payload.get("market") or "cn")
+    limit = int(payload.get("limit") or 8)
+    data = recommend_campaign(
+        db,
+        campaign_id=campaign_id,
+        theme=theme,
+        market=market,
+        limit=limit,
+    )
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/products/categories", response_model=dict)
+def list_categories(
+    has_image: bool = Query(False, description="仅统计有主图的品类"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回商品品类分布，供选品中心 / 海报工作流筛选。"""
+    q = db.query(AboProduct.product_type, func.count(AboProduct.id)).filter(
+        AboProduct.product_type.isnot(None), AboProduct.product_type != ""
+    )
+    if has_image:
+        q = q.filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "")
     rows = (
-        db.query(AboProduct.product_type, func.count(AboProduct.id))
-        .filter(AboProduct.image_path.isnot(None), AboProduct.image_path != "")
-        .filter(AboProduct.product_type.isnot(None), AboProduct.product_type != "")
-        .group_by(AboProduct.product_type)
+        q.group_by(AboProduct.product_type)
         .order_by(func.count(AboProduct.id).desc())
-        .limit(30)
+        .limit(40)
         .all()
     )
     items = []

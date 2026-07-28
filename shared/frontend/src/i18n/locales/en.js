@@ -17,6 +17,7 @@ export default {
   },
   nav: {
     home: 'Dashboard',
+    catalog: 'Product Catalog',
     writing: 'Copywriting',
     matte: 'Image Matting',
     background: 'Background Gen',
@@ -53,6 +54,8 @@ export default {
   home: {
     welcome: 'Welcome to AI E-commerce Marketing Platform',
     welcomeDesc: 'All-in-one e-commerce marketing tools to boost your product promotion',
+    catalogName: 'Product Catalog',
+    catalogDesc: 'Browse ABO inventory, then jump into copywriting or poster workflow',
     writingName: 'Copywriting',
     writingDesc: 'AI-powered multi-platform & multi-language marketing copy generation',
     matteName: 'Image Matting',
