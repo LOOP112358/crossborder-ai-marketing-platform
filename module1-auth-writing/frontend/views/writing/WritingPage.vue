@@ -131,6 +131,9 @@
         <el-button text type="primary" @click="openHistory" :loading="loadingHistory" v-if="!showHistory">
           <el-icon><Clock /></el-icon> {{ $t('writing.history') }}
         </el-button>
+        <el-button text type="success" @click="$router.push('/my-works?tab=writing')">
+          全部作品库
+        </el-button>
       </div>
     </div>
 
@@ -226,10 +229,6 @@ function clearCatalogSelection() {
   selectedProductId.value = null
 }
 
-onMounted(() => {
-  remoteSearchProducts('')
-})
-
 // 手绘线稿图标（青绿描边，与 sketch 主题一致）
 const STYLE_ICONS = {
   professional: `<svg viewBox="0 0 48 48" fill="none"><path d="M10 18.2c8.5-.8 19.2-.6 28.2.4v18.6c-9.2.9-19.4.7-28.2-.3V18.2z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.5c2.2-5.2 7.4-7.8 14.1-7.6 6.4.2 11.2 2.9 13.9 7.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M21.5 18.2v3.8c0 1.6 1.2 2.6 2.7 2.6s2.6-1 2.6-2.6v-3.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 26.5h6.2M28 26.5h6.5M14 31.5h20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg>`,
@@ -307,11 +306,34 @@ async function loadHistory() {
 function reloadFromHistory(item) {
   form.product_name = item.product_name
   form.product_features = item.product_features || ''
-  if (item.platform) form.platforms = item.platform.split(', ')
+  if (item.platform) {
+    form.platforms = String(item.platform).split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+  }
   form.language = item.language || 'zh'
   form.style = item.style || 'professional'
+  if (item.title || item.body) {
+    results.value = [{
+      title: item.title,
+      body: item.body,
+      tags: item.tags,
+      platform: item.platform,
+    }]
+  }
   showHistory.value = false
 }
+
+onMounted(() => {
+  remoteSearchProducts('')
+  try {
+    const raw = sessionStorage.getItem('writing_reuse')
+    if (raw) {
+      const data = JSON.parse(raw)
+      sessionStorage.removeItem('writing_reuse')
+      reloadFromHistory(data)
+      ElMessage.success('已从作品库载入文案，可继续编辑或重新生成')
+    }
+  } catch { /* ignore */ }
+})
 </script>
 
 <style scoped>
@@ -383,7 +405,7 @@ function reloadFromHistory(item) {
 .field-value.title { font-size: 16px; font-weight: 600; color: #303133; }
 .field-value.body { color: #606266; }
 .field-value.tags { color: #409eff; }
-.history-bar { margin-top: 16px; text-align: center; }
+.history-bar { margin-top: 16px; text-align: center; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .history-card { margin-bottom: 12px; }
 .history-product { margin: 0 0 4px; }
 .history-meta { display: flex; gap: 4px; margin: 0 0 6px; }

@@ -235,8 +235,9 @@ async function onCatalogPick(id) {
   resultImageUrl.value = ''
   // 换品后旧抠图失效，避免带着上一件商品的图去贴新文案
   appStore.setMatteResult('', p.category || '', p.category_en || p.product_type || '', 0, null)
+  appStore.clearPosterConfig()
   try {
-    const data = await getPosterCopy(id, 'zh')
+    const data = await getPosterCopy(id, 'zh', false)
     appStore.setSelectedProduct(data.product, data.poster_copy)
     catalogProduct.value = data.product
     ElMessage.success('已选库内商品，请点击「对库内主图抠图」（图文将绑定同一商品）')
@@ -271,7 +272,7 @@ async function matteCatalogProduct() {
     )
     // 抠图完成时再确认一次文案与当前商品一致
     try {
-      const copyData = await getPosterCopy(pid, 'zh')
+      const copyData = await getPosterCopy(pid, 'zh', false)
       appStore.setSelectedProduct(copyData.product, copyData.poster_copy)
     } catch {
       /* keep existing */

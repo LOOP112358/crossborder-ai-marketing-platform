@@ -1,6 +1,7 @@
 import base64
 import os
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 import requests
@@ -10,18 +11,18 @@ from PIL import Image
 
 def _scene_hint(category: str, product_name: str = "", brand: str = "", product_type: str = "") -> str:
     blob = f"{category} {product_name} {brand} {product_type}".lower()
-    if any(k in blob for k in ("tablet", "kindle", "sleeve", "case", "phone", "保护套", "手机壳", "平板")):
+    if any(k in blob for k in ("tablet", "kindle", "sleeve", "case", "phone", "protective", "ipad")):
         return (
-            "modern desk / lifestyle shelf for electronics accessories, "
+            "modern desk or lifestyle shelf for electronics accessories, "
             "soft daylight, wood or matte desk surface, shallow depth of field"
         )
-    if any(k in blob for k in ("headphone", "earbud", "耳机")):
-        return "clean desk with soft speakers vibe, lifestyle audio scene, no devices shown"
-    if any(k in blob for k in ("shoe", "sneaker", "鞋")):
+    if any(k in blob for k in ("headphone", "earbud", "earphone")):
+        return "clean desk with soft audio lifestyle mood, no devices shown"
+    if any(k in blob for k in ("shoe", "sneaker")):
         return "minimal footwear pedestal, concrete or soft fabric ground, fashion studio"
-    if any(k in blob for k in ("sofa", "chair", "table", "家具", "沙发", "椅子", "桌子")):
-        return "bright Scandinavian home interior corner, empty floor/table surface for placement"
-    if any(k in blob for k in ("watch", "手表")):
+    if any(k in blob for k in ("sofa", "chair", "table", "furniture")):
+        return "bright Scandinavian home interior corner, empty floor or table surface for placement"
+    if any(k in blob for k in ("watch", "jewelry")):
         return "luxury jewelry display surface, soft dark gradient, premium lighting"
     if category:
         return f"e-commerce scene suitable for {category} product placement"
@@ -31,7 +32,7 @@ def _scene_hint(category: str, product_name: str = "", brand: str = "", product_
 def _style_label(style: str) -> str:
     mapping = {
         "outdoor": "outdoor natural environment",
-        "minimalist": "minimalist solid / clean studio",
+        "minimalist": "minimalist solid clean studio",
         "luxury": "luxury premium interior",
         "tech": "tech futuristic showroom",
         "warm": "warm cozy home atmosphere",
@@ -59,8 +60,7 @@ def build_prompt(
     product_line = ""
     if product_name or brand or product_type:
         product_line = (
-            f"The background should match this product context "
-            f"(do NOT draw the product itself): "
+            "The background should match this product context, but do not draw the product itself: "
             f"name={product_name or 'n/a'}, brand={brand or 'n/a'}, "
             f"type={product_type or category or 'n/a'}. "
         )
@@ -75,7 +75,7 @@ def build_prompt(
         extras.append(f"Additional direction: {extra_note}.")
     extra_block = (" " + " ".join(extras)) if extras else ""
     return (
-        "Create an EMPTY commercial e-commerce background only. "
+        "Create an empty commercial e-commerce background only. "
         f"{product_line}"
         f"Scene direction: {scene}. "
         f"Visual style: {_style_label(style)}. "
@@ -83,52 +83,9 @@ def build_prompt(
         f"{extra_block} "
         "Leave a large clean central area for later product placement. "
         "Realistic lighting and soft contact-shadow-friendly ground plane. "
-        "Do NOT generate any product, packaging, person, animal, text, watermark, or logo. "
+        "Do not generate any product, packaging, person, animal, text, watermark, or logo. "
         "High quality advertising photography background."
     )
-
-
-def build_sd_prompt(
-    category,
-    style,
-    color_hint,
-    product_name: str = "",
-    brand: str = "",
-    product_type: str = "",
-    scene_preset: str = "",
-    lighting: str = "",
-    mood: str = "",
-    camera: str = "",
-    extra_note: str = "",
-):
-    scene = scene_preset.strip() or _scene_hint(category, product_name, brand, product_type)
-    return f"""
-Professional empty e-commerce background photography.
-
-Product context (do NOT render the product):
-- name: {product_name or 'unknown'}
-- brand: {brand or 'unknown'}
-- type/category: {product_type or category or 'general'}
-
-Scene:
-{scene}
-
-Style: {_style_label(style)}
-Color palette: {color_hint or 'soft complementary tones'}
-Lighting: {lighting or 'soft realistic commercial light'}
-Mood: {mood or 'premium clean'}
-Camera: {camera or 'eye-level, product-placement friendly'}
-Extra: {extra_note or 'none'}
-
-Hard requirements:
-- empty scene, no main subject object
-- large clean central placement area
-- realistic lighting and soft floor/table shadows
-- premium advertising look
-- no people, text, logos, packaging, or brand marks
-
-Only output an empty background environment.
-"""
 
 
 def build_cache_key(
@@ -168,148 +125,104 @@ def generate_seedream(prompt, output_dir: Path):
 
     api_key = os.getenv("ARK_API_KEY")
     base_url = os.getenv("ARK_BASE_URL")
-    model = os.getenv("ARK_MODEL")
-    if not (api_key and base_url and model):
-        raise ValueError("ARK_API_KEY, ARK_BASE_URL, and ARK_MODEL must be configured")
+    # 优先 lite（更快更便宜）；未开通时自动回退 pro
+    primary = os.getenv("ARK_MODEL") or "doubao-seedream-5-0-lite-260128"
+    fallback = os.getenv("ARK_MODEL_FALLBACK") or "doubao-seedream-5-0-pro-260628"
+    models = [primary]
+    if fallback and fallback != primary:
+        models.append(fallback)
+    size = os.getenv("BG_IMAGE_SIZE", "1024x1024")
+    timeout = int(os.getenv("BG_API_TIMEOUT", "180"))
+    if not (api_key and base_url):
+        raise ValueError("ARK_API_KEY and ARK_BASE_URL must be configured")
 
     url = f"{base_url.rstrip('/')}/images/generations"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "size": "1024x1024",
-        "n": 1,
-    }
 
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    if response.status_code >= 400:
-        print(response.text)
-    response.raise_for_status()
-
-    result = response.json()
-    image_url = result["data"][0]["url"]
-    image_response = requests.get(image_url, timeout=120)
-    image_response.raise_for_status()
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{uuid.uuid4().hex}_background.jpg"
-    with open(output_path, "wb") as file:
-        file.write(image_response.content)
-
-    return output_path
-
-
-def generate_stable_diffusion(prompt, output_dir: Path):
-    load_dotenv()
-
-    api_key = os.getenv("STABILITY_API_KEY")
-    if not api_key:
-        raise ValueError("STABILITY_API_KEY is not configured")
-
-    model = os.getenv("STABILITY_MODEL", "sd3.5-medium")
-    output_format = os.getenv("STABILITY_OUTPUT_FORMAT", "png")
-
-    if model in ["sd3.5-flash", "sd3.5-medium", "sd3.5-large"]:
-        url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
-        files = {
-            "prompt": (None, prompt),
-            "output_format": (None, output_format),
-            "model": (None, model),
+    last_error = None
+    for model in models:
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "size": size,
+            "n": 1,
+            "response_format": "url",
+            "watermark": False,
         }
-    elif model == "core":
-        url = "https://api.stability.ai/v2beta/stable-image/generate/core"
-        files = {
-            "prompt": (None, prompt),
-            "output_format": (None, output_format),
-        }
-    else:
-        raise ValueError(f"Unsupported Stability model: {model}")
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        except requests.exceptions.Timeout as exc:
+            last_error = TimeoutError(
+                f"Seedream 生成超时（>{timeout}s，模型 {model}）。"
+                "可开通 doubao-seedream-5-0-lite-260128 加速，或增大 BG_API_TIMEOUT。"
+            )
+            raise last_error from exc
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "image/*",
-    }
+        if response.status_code >= 400:
+            err_text = response.text[:1000]
+            print(f"[seedream] model={model} status={response.status_code} {err_text}")
+            # 未开通 / 不存在：尝试下一个模型
+            if response.status_code == 404 and (
+                "ModelNotOpen" in err_text or "NotFound" in err_text
+            ):
+                last_error = RuntimeError(err_text)
+                continue
+            # 参数不兼容时去掉 watermark / response_format 再试一次
+            soft = {k: v for k, v in payload.items() if k not in ("watermark", "response_format")}
+            try:
+                response = requests.post(url, headers=headers, json=soft, timeout=timeout)
+            except requests.exceptions.Timeout as exc:
+                raise TimeoutError(
+                    f"Seedream 生成超时（>{timeout}s，模型 {model}）。"
+                ) from exc
+            if response.status_code >= 400:
+                print(response.text[:1000])
+                last_error = RuntimeError(response.text[:500])
+                continue
 
-    response = requests.post(url, headers=headers, files=files, timeout=120)
-    print("Stability status:", response.status_code)
-    if response.status_code >= 400:
-        print(response.text)
-    response.raise_for_status()
+        response.raise_for_status()
+        result = response.json()
+        item = (result.get("data") or [{}])[0]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{uuid.uuid4().hex}_seedream_background.jpg"
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{uuid.uuid4().hex}_sd_background.{output_format}"
-    with open(output_path, "wb") as file:
-        file.write(response.content)
+        if item.get("b64_json"):
+            output_path.write_bytes(base64.b64decode(item["b64_json"]))
+            print(f"[seedream] ok model={model} path={output_path.name}")
+            return output_path
 
-    return output_path
+        image_url = item.get("url")
+        if not image_url:
+            last_error = ValueError(f"Seedream returned no image: {result}")
+            continue
+        image_response = requests.get(image_url, timeout=60)
+        image_response.raise_for_status()
+        output_path.write_bytes(image_response.content)
+        print(f"[seedream] ok model={model} path={output_path.name}")
+        return output_path
 
-
-def refine_composite_with_sd(
-    image_path: Path,
-    output_dir: Path,
-    *,
-    prompt: str = "",
-    strength: float = 0.28,
-) -> Path:
-    """
-    用 Stability image-to-image 轻量精修合成图：柔化抠图白边、增强接触阴影。
-    strength 宜小（0.2~0.35），过大易改坏商品外形。
-    """
-    load_dotenv()
-    api_key = os.getenv("STABILITY_API_KEY")
-    if not api_key:
-        raise ValueError("STABILITY_API_KEY is not configured")
-
-    model = os.getenv("STABILITY_MODEL", "sd3.5-medium")
-    output_format = "png"
-    url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
-    refine_prompt = prompt or (
-        "Seamless commercial product poster photo, natural contact shadow under the product, "
-        "soft edge blending with background, realistic lighting, keep the exact product shape "
-        "and branding readable, no extra objects, no text, no watermark"
+    raise RuntimeError(
+        f"Seedream 生成失败。请在火山方舟开通 {primary}（推荐，更快），"
+        f"或确认 {fallback} 可用。详情: {last_error}"
     )
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "image/*",
-    }
-    with open(image_path, "rb") as f:
-        files = {
-            "prompt": (None, refine_prompt),
-            "mode": (None, "image-to-image"),
-            "strength": (None, str(max(0.05, min(0.6, float(strength))))),
-            "output_format": (None, output_format),
-            "model": (None, model),
-            "image": ("compose.png", f, "image/png"),
-        }
-        response = requests.post(url, headers=headers, files=files, timeout=120)
-
-    print("Stability refine status:", response.status_code)
-    if response.status_code >= 400:
-        print(response.text)
-    response.raise_for_status()
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{uuid.uuid4().hex}_refined.png"
-    output_path.write_bytes(response.content)
-    return output_path
 
 
 def _encode_image_data_uri(image_path: Path, max_side: int = 1280) -> str:
-    """本地图压成 jpeg data-uri，便于 Seedream 图生图上传。"""
     img = Image.open(image_path).convert("RGB")
-    w, h = img.size
-    scale = min(1.0, float(max_side) / max(w, h))
+    width, height = img.size
+    scale = min(1.0, float(max_side) / max(width, height))
     if scale < 1.0:
-        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
-    from io import BytesIO
+        img = img.resize(
+            (max(1, int(width * scale)), max(1, int(height * scale))),
+            Image.Resampling.LANCZOS,
+        )
 
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=88)
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG", quality=88)
+    b64 = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/jpeg;base64,{b64}"
 
 
@@ -320,22 +233,19 @@ def refine_composite_with_seedream(
     prompt: str = "",
     size: str = "1024x1024",
 ) -> Path:
-    """
-    用豆包 Seedream 图生图轻量精修合成图（不依赖 Stability 额度）。
-    提示词强调：保持商品外形/品牌，仅柔化边缘与接触阴影。
-    """
     load_dotenv()
     api_key = os.getenv("ARK_API_KEY")
     base_url = os.getenv("ARK_BASE_URL")
-    model = os.getenv("ARK_MODEL")
-    if not (api_key and base_url and model):
-        raise ValueError("ARK_API_KEY, ARK_BASE_URL, and ARK_MODEL must be configured")
+    model = os.getenv("ARK_MODEL") or "doubao-seedream-5-0-lite-260128"
+    fallback = os.getenv("ARK_MODEL_FALLBACK") or "doubao-seedream-5-0-pro-260628"
+    if not (api_key and base_url):
+        raise ValueError("ARK_API_KEY and ARK_BASE_URL must be configured")
 
     refine_prompt = prompt or (
         "Lightly refine this commercial product composite photo. "
         "Keep the exact product identity, shape, logo and packaging text unchanged. "
         "Only improve edge blend into the background, add soft realistic contact shadow, "
-        "match lighting color temperature. No extra objects, no new text, no watermark, no redesign."
+        "and match lighting color temperature. No extra objects, no new text, no watermark, no redesign."
     )
     data_uri = _encode_image_data_uri(Path(image_path))
     url = f"{base_url.rstrip('/')}/images/generations"
@@ -343,27 +253,37 @@ def refine_composite_with_seedream(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    # 兼容 image 字符串 / 数组两种网关形态
-    payload = {
-        "model": model,
-        "prompt": refine_prompt,
-        "image": data_uri,
-        "size": size,
-        "n": 1,
-        "response_format": "url",
-        "watermark": False,
-    }
-    response = requests.post(url, headers=headers, json=payload, timeout=180)
-    print("Seedream refine status:", response.status_code)
-    if response.status_code >= 400:
-        # 部分网关要求 image 为数组
-        print(response.text[:800])
-        payload["image"] = [data_uri]
+    models = [model] + ([fallback] if fallback and fallback != model else [])
+    response = None
+    for mid in models:
+        payload = {
+            "model": mid,
+            "prompt": refine_prompt,
+            "image": data_uri,
+            "size": size,
+            "n": 1,
+            "response_format": "url",
+            "watermark": False,
+        }
         response = requests.post(url, headers=headers, json=payload, timeout=180)
-        print("Seedream refine retry(array) status:", response.status_code)
+        print(f"Seedream refine status model={mid}:", response.status_code)
         if response.status_code >= 400:
             print(response.text[:800])
-    response.raise_for_status()
+            if response.status_code == 404 and (
+                "ModelNotOpen" in response.text or "NotFound" in response.text
+            ):
+                continue
+            payload["image"] = [data_uri]
+            response = requests.post(url, headers=headers, json=payload, timeout=180)
+            print("Seedream refine retry(array) status:", response.status_code)
+            if response.status_code >= 400:
+                print(response.text[:800])
+                if response.status_code == 404:
+                    continue
+        if response.status_code < 400:
+            break
+    if response is None or response.status_code >= 400:
+        response.raise_for_status()
 
     result = response.json()
     item = (result.get("data") or [{}])[0]
@@ -373,12 +293,13 @@ def refine_composite_with_seedream(
     if item.get("b64_json"):
         output_path.write_bytes(base64.b64decode(item["b64_json"]))
         return output_path
+
     image_url = item.get("url")
     if not image_url:
         raise ValueError(f"Seedream refine returned no image: {result}")
-    img_resp = requests.get(image_url, timeout=120)
-    img_resp.raise_for_status()
-    output_path.write_bytes(img_resp.content)
+    image_response = requests.get(image_url, timeout=60)
+    image_response.raise_for_status()
+    output_path.write_bytes(image_response.content)
     return output_path
 
 
@@ -391,10 +312,7 @@ def refine_composite(
     strength: float = 0.28,
     size: str = "1024x1024",
 ) -> Path:
-    """统一精修入口：seedream（默认）或 sd。"""
-    eng = (engine or "seedream").strip().lower()
-    if eng in ("sd", "stability", "stable"):
-        return refine_composite_with_sd(image_path, output_dir, prompt=prompt, strength=strength)
+    # 兼容旧前端传 seedance
     return refine_composite_with_seedream(image_path, output_dir, prompt=prompt, size=size)
 
 

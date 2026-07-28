@@ -16,7 +16,7 @@
           />
           <el-form label-position="top" class="bg-form">
             <el-form-item label="场景品类（可改）">
-              <el-input v-model="form.category" placeholder="如：咖啡桌、平板保护套…" />
+              <el-input v-model="form.category" placeholder="如：咖啡桌、平板保护套..." />
               <el-button
                 v-if="suggestedCategory && suggestedCategory !== form.category"
                 size="small"
@@ -75,51 +75,27 @@
               />
             </el-form-item>
 
-            <el-form-item label="生成引擎">
-              <el-checkbox v-model="form.use_sd">同时调用 Stable Diffusion（耗额度，可选对照）</el-checkbox>
-              <p class="hint">默认只用豆包 Seedream，够用进海报；SD 额度不足时请保持关闭。</p>
-            </el-form-item>
-
             <el-button type="primary" size="large" :loading="generating" block @click="handleGenerate">
-              <el-icon><MagicStick /></el-icon> 生成背景
+              <el-icon><MagicStick /></el-icon> 用 Seedream 生成背景
             </el-button>
           </el-form>
         </el-card>
       </el-col>
+
       <el-col :span="15">
         <el-card v-if="result" shadow="never">
-          <template #header>
-            生成结果（点击选用，默认推荐 Seedream）
-          </template>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <div
-                class="pick-card"
-                :class="{ active: preferred === 'seedream' }"
-                @click="pick('seedream')"
-              >
-                <p class="img-label">豆包 Seedream（推荐进海报）</p>
-                <img :src="result.bg_url" class="result-img" />
-              </div>
-            </el-col>
-            <el-col :span="12">
-              <div
-                class="pick-card"
-                :class="{ active: preferred === 'sd' }"
-                @click="pick('sd')"
-              >
-                <p class="img-label">Stable Diffusion</p>
-                <img :src="result.enhanced_url" class="result-img" />
-              </div>
-            </el-col>
-          </el-row>
+          <template #header>Seedream 生成结果</template>
+          <img :src="result.bg_url" class="result-img" />
+          <el-button type="primary" style="margin-top:12px" @click="pick">
+            选用该背景进入海报
+          </el-button>
           <el-descriptions :column="2" border size="small" style="margin-top:16px">
             <el-descriptions-item label="类别">{{ result.product_category }}</el-descriptions-item>
             <el-descriptions-item label="风格">{{ result.style }}</el-descriptions-item>
             <el-descriptions-item label="Prompt" :span="2">{{ result.prompt_used }}</el-descriptions-item>
           </el-descriptions>
         </el-card>
-        <el-empty v-else description="设置左侧选项后生成背景；可点选结果进入海报" />
+        <el-empty v-else description="设置左侧选项后生成 Seedream 背景" />
       </el-col>
     </el-row>
   </div>
@@ -134,7 +110,6 @@ import { ElMessage } from 'element-plus'
 const appStore = useAppStore()
 const generating = ref(false)
 const result = ref(null)
-const preferred = ref('seedream')
 
 const options = reactive({
   styles: [],
@@ -154,39 +129,39 @@ const form = reactive({
   mood: '',
   camera: '',
   extra_note: '',
-  use_sd: false,
 })
 
 const product = computed(() => appStore.selectedProduct || {})
 const productHint = computed(() => {
   const p = product.value
   if (!p?.name && !p?.brand) return ''
-  return [p.brand, p.name || p.item_name, p.product_type || p.category].filter(Boolean).join(' · ')
+  return [p.brand, p.name || p.item_name, p.product_type || p.category].filter(Boolean).join(' / ')
 })
 
 const suggestedCategory = computed(() => {
   const p = product.value
   const name = `${p.name || ''} ${p.item_name || ''} ${p.product_type || ''}`.toLowerCase()
-  if (/tablet|kindle|ipad|sleeve|case|保护套|手机壳|平板/.test(name)) return '数码保护套 / 桌面陈列'
-  if (/headphone|earbud|耳机/.test(name)) return '耳机配件'
-  if (/coffee.?table|茶几|咖啡桌|\btable\b/.test(name)) return '咖啡桌 / 客厅家具'
+  if (/tablet|kindle|ipad|sleeve|case/.test(name)) return '数码保护套 / 桌面陈列'
+  if (/headphone|earbud/.test(name)) return '耳机配件'
+  if (/coffee.?table|\btable\b/.test(name)) return '咖啡桌 / 客厅家具'
   if (p.category) return p.category
   return appStore.category || ''
 })
 
-function pick(which) {
-  preferred.value = which
-  appStore.chooseBackground(which)
-  ElMessage.success(which === 'seedream' ? '已选用 Seedream 背景进入海报' : '已选用 SD 背景进入海报')
+function pick() {
+  if (!result.value?.bg_url) return
+  appStore.chooseBackground('seedream')
+  ElMessage.success('已选用 Seedream 背景进入海报')
 }
 
 async function handleGenerate() {
-  if (!form.category) { ElMessage.warning('请输入场景品类'); return }
+  if (!form.category) {
+    ElMessage.warning('请输入场景品类')
+    return
+  }
   generating.value = true
   const tip = ElMessage({
-    message: form.use_sd
-      ? '正在生成背景（Seedream + SD），约 30～90 秒…'
-      : '正在用豆包 Seedream 生成背景（未调用 SD），约 20～60 秒…',
+    message: '正在用豆包 Seedream 生成背景（lite 约 20～60 秒；未开通则回退 pro，约 1～2 分钟）…',
     type: 'info',
     duration: 0,
   })
@@ -204,18 +179,16 @@ async function handleGenerate() {
     fd.append('mood', form.mood || '')
     fd.append('camera', form.camera || '')
     fd.append('extra_note', form.extra_note || '')
-    fd.append('use_sd', form.use_sd ? '1' : '0')
     result.value = await request.post('/background/generate', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 180000,
+      timeout: 210000,
     })
-    preferred.value = 'seedream'
     appStore.setBackgroundResult(
-      { bg_url: result.value.bg_url, enhanced_url: result.value.enhanced_url },
+      { bg_url: result.value.bg_url, enhanced_url: result.value.enhanced_url || result.value.bg_url },
       form.style,
       'seedream',
     )
-    ElMessage.success(result.value.cached ? '已命中缓存背景' : '背景生成完成，默认已选用 Seedream')
+    ElMessage.success(result.value.cached ? '已命中缓存背景' : 'Seedream 背景生成完成')
   } catch (e) {
     ElMessage.error(e?.message || '背景生成失败，请查看后端日志')
   } finally {
@@ -236,9 +209,8 @@ onMounted(async () => {
   }
   form.category = suggestedCategory.value || appStore.category || ''
   if (product.value?.color) form.color_hint = product.value.color
-  // 家具类默认给更贴切的场景
   const name = `${product.value.name || ''} ${product.value.product_type || ''}`.toLowerCase()
-  if (/table|sofa|chair|家具|桌子|沙发|椅子|茶几/.test(name) && !form.scene_preset) {
+  if (/table|sofa|chair|furniture/.test(name) && !form.scene_preset) {
     form.scene_preset = 'bright living room corner with empty floor space'
     form.style = 'scandi'
     form.mood = 'fresh and airy'
@@ -251,19 +223,5 @@ onMounted(async () => {
 .bg-page { padding: 0; }
 .panel-title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .bg-form :deep(.el-form-item) { margin-bottom: 12px; }
-.hint { margin: 4px 0 0; font-size: 12px; color: #888; line-height: 1.4; }
 .result-img { width: 100%; border-radius: 4px; display: block; }
-.img-label { text-align: center; font-size: 13px; color: #909399; margin-bottom: 8px; }
-.pick-card {
-  border: 2px solid transparent;
-  border-radius: 10px;
-  padding: 8px;
-  cursor: pointer;
-  transition: border-color .15s, box-shadow .15s;
-}
-.pick-card:hover { border-color: rgba(47,111,106,.35); }
-.pick-card.active {
-  border-color: #2f6f6a;
-  box-shadow: 0 0 0 3px rgba(47,111,106,.15);
-}
 </style>

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="poster-page sketch-shell">
     <h1>海报合成</h1>
     <p class="subtitle">模板 + 商品图 + 背景图 · 支持多文字层样式（颜色 / 字体 / 艺术字 / 坐标）</p>
@@ -39,7 +39,7 @@
             :closable="false"
             show-icon
             style="margin-bottom:10px"
-            title="图文可能不一致：当前抠图与文案商品不是同一件。请点「使用库内商品文案」同步，或回到第1步重新选品抠图。"
+            title="图文可能不一致：当前抠图与文案商品不是同一件。请点「AI 精炼短文案」同步，或回到第1步重新选品抠图。"
           />
           <el-alert
             v-else-if="boundProductLabel"
@@ -49,13 +49,13 @@
             style="margin-bottom:10px"
             :title="`当前绑定商品：${boundProductLabel}`"
           />
-          <p class="hint">库内字段可即时填入；「AI 精炼」会用知识库卖点 + DeepSeek 压成适合叠字的短句。</p>
+          <p class="hint">每次进入会按当前商品重新 AI 精炼（自动清空旧缓存）；也可点「仅用库内原文」跳过 AI。</p>
           <div class="action-row" style="margin-top:0;margin-bottom:8px">
-            <el-button type="warning" @click="fillFromCatalog" :disabled="!appStore.selectedProductId && !appStore.mattedProductId && !appStore.posterConfig.title">
-              使用库内商品文案
-            </el-button>
-            <el-button type="primary" plain :loading="refiningCopy" @click="refineWithAI" :disabled="!copyProductId">
+            <el-button type="primary" :loading="refiningCopy" @click="refineWithAI" :disabled="!copyProductId">
               AI 精炼短文案
+            </el-button>
+            <el-button type="warning" plain @click="fillFromCatalog" :disabled="!appStore.selectedProductId && !appStore.mattedProductId && !appStore.posterConfig.title">
+              仅用库内原文
             </el-button>
             <el-button @click="fillChineseDemo">填入中文示例</el-button>
           </div>
@@ -135,8 +135,7 @@
           <div class="action-row">
             <el-checkbox v-model="form.refine_enabled">融合精修（画文字前）</el-checkbox>
             <el-select v-model="form.refine_engine" style="width:220px" size="small" :disabled="!form.refine_enabled">
-              <el-option value="seedream" label="豆包 Seedream（推荐，不耗 SD）" />
-              <el-option value="sd" label="Stable Diffusion（耗额度）" />
+              <el-option value="seedream" label="Seedream 精修" />
             </el-select>
           </div>
           <div class="action-row">
@@ -150,32 +149,16 @@
 
       <el-col :span="12">
         <el-card shadow="never">
-          <h3>生成结果预览</h3>
+          <div class="preview-head">
+            <h3>生成结果预览</h3>
+            <el-button type="primary" link @click="$router.push('/my-works?tab=poster')">查看全部历史 →</el-button>
+          </div>
           <div class="preview-box">
             <img v-if="posterUrl" :src="posterUrl" alt="poster" />
             <span v-else>暂无生成结果</span>
           </div>
-        </el-card>
-
-        <el-card shadow="never" style="margin-top:16px">
-          <h3>历史记录</h3>
-          <el-button @click="loadHistory">刷新历史记录</el-button>
-          <el-button type="warning" @click="loadFavorites">查看收藏列表</el-button>
-          <div v-if="listItems.length === 0" class="empty-tip">暂无数据</div>
-          <div v-for="item in listItems" :key="item.id || item.poster_id" class="history-row">
-            <div class="history-info">
-              <strong>{{ item.title || '未命名海报' }}</strong>
-              <div class="history-meta">
-                副标题：{{ item.discount || '-' }} | 按钮：{{ item.price || '-' }} | 下载：{{ item.downloads || 0 }}次
-              </div>
-            </div>
-            <div class="history-actions">
-              <el-button size="small" @click="posterUrl = item.poster_url">预览</el-button>
-              <a :href="`/api/poster/download/${item.poster_id || item.id}`" target="_blank">
-                <el-button size="small">下载</el-button>
-              </a>
-              <el-button size="small" type="warning" @click="doFav(item.poster_id || item.id)">收藏</el-button>
-            </div>
+          <div v-if="posterUrl" class="preview-actions">
+            <el-button type="primary" @click="$router.push('/my-works?tab=poster')">打开我的作品</el-button>
           </div>
         </el-card>
       </el-col>
@@ -196,7 +179,6 @@ const refiningCopy = ref(false)
 const posterUrl = ref('')
 const statusMsg = ref('')
 const templates = ref([])
-const listItems = ref([])
 const openPanels = ref(['title'])
 
 /** 优先用「抠图绑定」的商品 id，保证图文同源 */
@@ -317,26 +299,13 @@ async function loadTemplates() {
   } catch {}
 }
 
-async function loadHistory() {
-  try {
-    const d = await request.get('/poster/history')
-    listItems.value = d.items || []
-  } catch {}
-}
-
-async function loadFavorites() {
-  try {
-    listItems.value = await request.get('/poster/favorites')
-  } catch {}
-}
-
 async function composePoster() {
   if (!form.matted_url || !form.bg_url) {
     ElMessage.warning('请输入商品图和背景图 URL')
     return
   }
   if (copyMismatch.value) {
-    ElMessage.error('图文商品不一致，请先点「使用库内商品文案」同步，或回第1步重新抠图')
+    ElMessage.error('图文商品不一致，请先点「AI 精炼短文案」同步，或回第1步重新抠图')
     return
   }
   if (form.matted_url.includes('/static/abo-images/')) {
@@ -348,17 +317,15 @@ async function composePoster() {
   }
   composing.value = true
   statusMsg.value = form.refine_enabled
-    ? (form.refine_engine === 'sd'
-      ? '正在合成并调用 SD 精修（约 20～40 秒）…'
-      : '正在合成并用 Seedream 融合精修（约 20～60 秒）…')
+    ? '正在合成并用 Seedream 融合精修（约 15～45 秒）...'
     : '正在生成海报...'
   try {
     const p = appStore.selectedProduct || {}
     const payload = {
       ...form,
-      sd_refine: form.refine_enabled && form.refine_engine === 'sd',
+      sd_refine: false,
       refine_enabled: form.refine_enabled,
-      refine_engine: form.refine_engine,
+      refine_engine: 'seedream',
       product_hint: [p.brand, p.name || p.item_name, p.product_type].filter(Boolean).join(' / '),
     }
     const data = await request.post('/poster/compose', payload, {
@@ -366,9 +333,8 @@ async function composePoster() {
     })
     posterUrl.value = data.poster_url
     statusMsg.value = '海报生成成功！'
-    ElMessage.success('海报合成成功')
+    ElMessage.success('海报合成成功，可在「我的海报」中查看历史')
     loadTemplates()
-    loadHistory()
   } catch (e) {
     statusMsg.value = '生成失败：' + (e?.response?.data?.detail || e?.message || '')
   } finally {
@@ -407,10 +373,6 @@ function onTemplateChange(id, silent = false) {
   if (!silent) ElMessage.success(`已应用「${t.name}」推荐样式${form.auto_layout ? '（自动排版开启）' : ''}`)
 }
 
-function doFav(pid) {
-  request.post(`/poster/favorite/${pid}`).then((d) => ElMessage.success(d.message || '已更新收藏')).catch(() => {})
-}
-
 function fillChineseDemo() {
   form.title = '便携式榨汁杯'
   form.subtitle = '户外旅行随身带'
@@ -429,35 +391,39 @@ function cleanCopyText(s) {
 
 function applyPosterCopy(copy) {
   if (!copy) return
-  form.title = cleanCopyText(copy.title) || form.title
-  form.subtitle = cleanCopyText(copy.subtitle) || form.subtitle
-  form.selling_point_1 = cleanCopyText(copy.selling_point_1) || form.selling_point_1
-  form.selling_point_2 = cleanCopyText(copy.selling_point_2) || form.selling_point_2
-  form.cta_text = cleanCopyText(copy.cta_text) || form.cta_text
-  form.discount = cleanCopyText(copy.discount) || form.discount
-  form.price = cleanCopyText(copy.price || copy.cta_text) || form.price
+  // 整组覆盖，禁止 || 旧值（否则会串上一件商品）
+  form.title = cleanCopyText(copy.title)
+  form.subtitle = cleanCopyText(copy.subtitle)
+  form.selling_point_1 = cleanCopyText(copy.selling_point_1)
+  form.selling_point_2 = cleanCopyText(copy.selling_point_2)
+  form.cta_text = cleanCopyText(copy.cta_text)
+  form.discount = cleanCopyText(copy.discount)
+  form.price = cleanCopyText(copy.price || copy.cta_text)
+}
+
+function clearFormCopy() {
+  form.title = ''
+  form.subtitle = ''
+  form.selling_point_1 = ''
+  form.selling_point_2 = ''
+  form.cta_text = ''
+  form.discount = ''
+  form.price = ''
 }
 
 async function fillFromCatalog() {
   const pid = copyProductId.value
   if (!pid) {
-    if (appStore.posterConfig?.title) {
-      applyPosterCopy(appStore.posterConfig)
-      ElMessage.warning('当前为缓存文案；建议回到抠图步骤重新选品，保证图文一致')
-      return
-    }
     ElMessage.warning('请先在「商品抠图」步骤从商品库选品并抠图')
     return
   }
   try {
+    clearFormCopy()
+    appStore.clearPosterConfig()
     const data = await getPosterCopy(pid, 'zh', false)
     appStore.setSelectedProduct(data.product, data.poster_copy)
-    // 若已有抠图，强制把文案商品对齐到抠图商品
-    if (appStore.mattedProductId && Number(appStore.mattedProductId) !== Number(pid)) {
-      ElMessage.warning('已按抠图绑定商品刷新文案')
-    }
     applyPosterCopy(data.poster_copy)
-    ElMessage.success(`已填入「${boundProductLabel.value || data.product?.name || '当前商品'}」文案`)
+    ElMessage.success(`已填入「${boundProductLabel.value || data.product?.name || '当前商品'}」库内原文（未走 AI）`)
   } catch (e) {
     ElMessage.error('拉取文案失败：' + (e?.message || ''))
   }
@@ -470,8 +436,20 @@ async function refineWithAI() {
     return
   }
   refiningCopy.value = true
+  // 先清缓存，避免请求期间仍显示上一件商品文案
+  clearFormCopy()
+  appStore.clearPosterConfig()
   try {
     const data = await getPosterCopy(pid, 'zh', true)
+    const returnedId = data?.product?.id
+    if (returnedId != null && Number(returnedId) !== Number(pid)) {
+      throw new Error('返回文案商品与当前抠图不一致，已丢弃')
+    }
+    // 精炼完成时若用户已换品，丢弃结果
+    if (Number(copyProductId.value) !== Number(pid)) {
+      ElMessage.warning('商品已切换，已丢弃过期文案')
+      return
+    }
     appStore.setSelectedProduct(data.product, data.poster_copy)
     applyPosterCopy(data.poster_copy)
     const src = data.poster_copy?.source === 'kb+llm' ? '知识库 + DeepSeek' : '知识库规则（LLM 未就绪，已回退）'
@@ -510,7 +488,6 @@ function useWhiteStyle() {
 
 onMounted(async () => {
   loadTemplates()
-  loadHistory()
   // 优先使用第1步抠图结果
   if (appStore.mattedUrl && appStore.mattedUrl.includes('/static/matte/')) {
     form.matted_url = appStore.mattedUrl
@@ -520,31 +497,60 @@ onMounted(async () => {
     form.matted_url = ''
   }
   form.bg_url = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl || form.bg_url
-  // 有抠图绑定商品时，强制用该商品文案，避免串货
-  if (appStore.mattedProductId) {
-    try {
-      const data = await getPosterCopy(appStore.mattedProductId, 'zh', false)
-      appStore.setSelectedProduct(data.product, data.poster_copy)
-      applyPosterCopy(data.poster_copy)
-    } catch {
-      if (appStore.posterConfig?.title) applyPosterCopy(appStore.posterConfig)
+  clearFormCopy()
+
+  // 从「我的作品」一键带入的文案：优先使用，不再自动 AI 覆盖
+  let override = null
+  try {
+    const raw = sessionStorage.getItem('poster_copy_override')
+    if (raw) {
+      override = JSON.parse(raw)
+      sessionStorage.removeItem('poster_copy_override')
     }
-  } else if (appStore.posterConfig?.title) {
-    applyPosterCopy(appStore.posterConfig)
+  } catch { /* ignore */ }
+
+  if (override?.title) {
+    applyPosterCopy(override)
+    appStore.setPosterConfig(override, appStore.mattedProductId || appStore.selectedProductId)
+    ElMessage.success('已应用从作品库带入的文案')
+    return
+  }
+
+  const pid = appStore.mattedProductId || appStore.selectedProductId
+  if (pid) {
+    if (!appStore.isPosterConfigForProduct(pid)) {
+      appStore.clearPosterConfig()
+    }
+    try {
+      await refineWithAI()
+    } catch {
+      /* refineWithAI 内部已提示 */
+    }
+  } else {
+    appStore.clearPosterConfig()
   }
 })
 
 watch(
-  () => [appStore.mattedUrl, appStore.preferredBgUrl, appStore.seedreamBgUrl, appStore.enhancedBgUrl, appStore.posterConfig],
+  () => [appStore.mattedUrl, appStore.preferredBgUrl, appStore.seedreamBgUrl, appStore.enhancedBgUrl],
   () => {
     if (appStore.mattedUrl && appStore.mattedUrl.includes('/static/matte/')) {
       form.matted_url = appStore.mattedUrl
     }
     const bg = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl
     if (bg) form.bg_url = bg
-    if (appStore.posterConfig?.title && !form.title) applyPosterCopy(appStore.posterConfig)
   },
-  { deep: true }
+)
+
+watch(
+  () => appStore.mattedProductId,
+  (pid, prev) => {
+    if (pid == null || (prev != null && Number(pid) !== Number(prev))) {
+      clearFormCopy()
+      appStore.clearPosterConfig()
+    }
+    if (pid) refineWithAI()
+  },
 )
 </script>
 
@@ -558,6 +564,15 @@ label.mini { margin-top: 0; font-size: 12px; font-weight: 500; color: #666; }
 .color-row { display: flex; gap: 8px; align-items: center; }
 .color-row input[type='color'] { width: 42px; height: 32px; border: 1px solid #ccc; border-radius: 6px; padding: 0; background: #fff; }
 .action-row { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.preview-head h3 { margin: 0; }
+.preview-actions { margin-top: 12px; }
 .preview-box {
   border: 2px dashed #dcdfe6;
   border-radius: 10px;
@@ -571,16 +586,5 @@ label.mini { margin-top: 0; font-size: 12px; font-weight: 500; color: #666; }
 }
 .preview-box img { max-width: 100%; border-radius: 8px; }
 .status-text { margin-top: 12px; color: #2f6f6a; font-weight: 600; word-break: break-all; }
-.empty-tip { padding: 20px; text-align: center; color: #999; }
-.history-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid #eee;
-  gap: 8px;
-}
-.history-info { flex: 1; min-width: 0; }
-.history-meta { color: #666; font-size: 13px; word-break: break-all; }
-.history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 </style>
+

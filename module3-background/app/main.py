@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 from fastapi import FastAPI, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,11 +6,8 @@ from fastapi.staticfiles import StaticFiles
 
 
 from .services import (
-    build_prompt,
-    build_sd_prompt,
-    build_cache_key,
-    generate_background,
-    generate_stable_diffusion
+    build_prompt,    build_cache_key,
+    generate_background
 )
 
 from .database import BackgroundRepository
@@ -311,41 +308,6 @@ async def generate(
 
 
 
-    # =========================
-    # 4. SD Prompt
-    # =========================
-
-
-    sd_prompt = build_sd_prompt(
-
-        category,
-
-        style,
-
-        color_hint
-
-    )
-
-
-
-    print(
-        "========== 豆包Prompt =========="
-    )
-
-    print(prompt)
-
-
-
-    print(
-        "========== SD Prompt =========="
-    )
-
-    print(sd_prompt)
-
-
-
-
-
 
     # =========================
     # 5. 豆包生成
@@ -359,32 +321,6 @@ async def generate(
         GENERATED_DIR
 
     )
-
-
-
-
-
-
-
-    # =========================
-    # 6. SD生成
-    # =========================
-
-
-    enhanced_path = generate_stable_diffusion(
-
-        sd_prompt,
-
-        ENHANCED_DIR
-
-    )
-
-
-
-
-
-
-
     bg_url = (
 
         "/static/background/generated/"
@@ -397,15 +333,7 @@ async def generate(
 
 
 
-    enhanced_url = (
-
-        "/static/background/enhanced/"
-
-        +
-
-        enhanced_path.name
-
-    )
+    enhanced_url = bg_url
 
 
 
@@ -443,14 +371,6 @@ async def generate(
                 +
 
                 prompt
-
-                +
-
-                "\n\nSD Prompt:\n"
-
-                +
-
-                sd_prompt
             ),
 
 

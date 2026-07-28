@@ -1,7 +1,7 @@
 """文案生成路由"""
 import asyncio
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func
 
@@ -228,14 +228,20 @@ async def get_poster_copy(
         return {"code": 404, "message": "商品不存在", "data": None}
     base = build_poster_copy(p, language=language)
     poster_copy = await refine_poster_copy_with_llm(p, base, language) if llm else base
-    return {
+    from fastapi.responses import JSONResponse
+    payload = {
         "code": 200,
         "message": "ok",
         "data": {
             "product": serialize_product(p),
             "poster_copy": poster_copy,
+            "product_id": product_id,
         },
     }
+    resp = JSONResponse(content=payload)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @router.post("/generate", response_model=dict)
@@ -329,3 +335,21 @@ def get_history(page: int = 1, page_size: int = 20,
             "page_size": page_size,
         },
     }
+
+
+@router.delete("/history/{history_id}", response_model=dict)
+def delete_history(
+    history_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """删除当前用户的一条文案历史"""
+    record = db.query(WritingHistory).filter(
+        WritingHistory.id == history_id,
+        WritingHistory.user_id == current_user.id,
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="文案记录不存在或无权删除")
+    db.delete(record)
+    db.commit()
+    return {"code": 200, "message": "已删除文案", "data": {"id": history_id}}

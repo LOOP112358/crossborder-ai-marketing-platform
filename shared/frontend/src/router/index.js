@@ -39,6 +39,20 @@ const routes = [
         component: () => import('@/views/PosterWorkflowPage.vue'),
         meta: { title: 'AI海报工作流' },
       },
+      {
+        path: 'my-works',
+        name: 'MyWorks',
+        component: () => import('@/views/MyWorksPage.vue'),
+        meta: { title: '我的作品' },
+      },
+      {
+        path: 'poster-history',
+        redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: to.query.tab || 'poster' } }),
+      },
+      {
+        path: 'writing-history',
+        redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: 'writing' } }),
+      },
       // 旧路由兼容：跳到工作流对应步骤
       { path: 'matte', redirect: { path: '/poster-workflow', query: { step: '0' } } },
       { path: 'background', redirect: { path: '/poster-workflow', query: { step: '1' } } },

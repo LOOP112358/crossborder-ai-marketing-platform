@@ -154,6 +154,37 @@ def get_history(page:int=1,page_size:int=20,current_user:User=Depends(get_curren
     total=q.count();items=q.offset((page-1)*page_size).limit(page_size).all()
     return _ok({"items":[{"id":r.id,"poster_url":r.poster_url,"title":r.title or "","discount":r.discount or "","price":r.price or "","downloads":r.downloads,"created_at":str(r.created_at) if r.created_at else ""} for r in items],"total":total,"page":page,"page_size":page_size})
 
+@router.delete("/history/{pid}")
+def delete_history(pid: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    record = db.query(PosterHistory).filter(
+        PosterHistory.id == pid,
+        PosterHistory.user_id == current_user.id,
+    ).first()
+    if not record:
+        raise HTTPException(404, "海报记录不存在或无权删除")
+
+    # 先清收藏关联
+    db.query(Favorite).filter(
+        Favorite.poster_id == pid,
+        Favorite.user_id == current_user.id,
+    ).delete(synchronize_session=False)
+
+    poster_url = record.poster_url or ""
+    db.delete(record)
+    db.commit()
+
+    # 尽量删本地文件（失败不影响接口）
+    if poster_url.startswith("/static/"):
+        try:
+            path = STATIC_ROOT / poster_url.replace("/static/", "").lstrip("/")
+            if path.is_file():
+                path.unlink()
+        except Exception:
+            pass
+
+    return _ok({"id": pid}, "已删除海报")
+
+
 @router.get("/download/{pid}")
 def download_poster(pid:int,db:Session=Depends(get_db)):
     r=db.query(PosterHistory).filter(PosterHistory.id==pid).first()

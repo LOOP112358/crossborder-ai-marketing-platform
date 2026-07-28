@@ -68,6 +68,15 @@ const modules = computed(() => [
     ready: true,
   },
   {
+    name: '我的作品',
+    desc: '文案历史与海报作品统一查看、复用与删除',
+    path: '/my-works',
+    icon: '▤',
+    owner: '成员1/4',
+    status: t('home.done'),
+    ready: true,
+  },
+  {
     name: t('home.chatName'),
     desc: t('home.chatDesc'),
     path: '/chat',

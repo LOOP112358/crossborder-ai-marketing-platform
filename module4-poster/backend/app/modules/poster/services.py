@@ -1,241 +1,43 @@
-"""海报合成引擎 — 桥接成员4原始 poster_module，统一 static 路径"""
+"""海报合成引擎 —— 对接 poster_module 完整能力（排版 / Seedream 精修）"""
 import importlib.util
 import json
+from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
-# services.py → poster → modules → app → backend → module4-poster → repo
+# module4-poster/backend/app/modules/poster/services.py → 仓库根
 REPO_ROOT = Path(__file__).resolve().parents[5]
 STATIC_DIR = REPO_ROOT / "static"
 POSTER_DIR = STATIC_DIR / "poster"
-UPLOAD_DIR = POSTER_DIR / "uploads"
 POSTER_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# 精简模板（仅表为空时灌库；有完整模板时不会覆盖）
 TEMPLATE_DATA = [
     {
-        "id": 2,
-        "name": "左文右图 · 详情种草（分栏模板）",
-        "preview_url": "/static/poster/templates/template_2.png",
+        "id": 1, "name": "商品居中模板",
+        "preview_url": "/static/poster/templates/template_1.png",
         "config": {
-            "purpose": "种草详情卡",
-            "layout_mode": "stack",
             "canvas": {"width": 1080, "height": 1080},
-            "overlays": [{"type": "left_panel", "ratio": 0.46, "color": [255, 255, 255, 160]}],
-            "product_shadow": True,
-            "product": {"x": 520, "y": 260, "w": 500, "h": 560},
-            "text_defaults": {
-                "title": {"x": 56, "y": 120, "font_size": 44, "color": "#1C2A32", "art_style": "normal"},
-                "subtitle": {"x": 56, "y": 220, "font_size": 28, "color": "#C45C26", "art_style": "normal"},
-                "selling_point_1": {"x": 56, "y": 320, "font_size": 26, "color": "#243038", "art_style": "normal"},
-                "selling_point_2": {"x": 56, "y": 380, "font_size": 26, "color": "#243038", "art_style": "normal"},
-                "cta_text": {"x": 56, "y": 880, "font_size": 32, "color": "#FFFFFF", "button_color": "#C45C26"},
-            },
-        },
-    },
-    {
-        "id": 3,
-        "name": "上文下图 · 清新上新",
-        "preview_url": "/static/poster/templates/template_3.png",
-        "config": {
-            "purpose": "上新宣传",
-            "layout_mode": "stack",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [{"type": "top_fade", "ratio": 0.36, "color": [47, 111, 106, 150]}],
-            "product_shadow": True,
-            "product": {"x": 210, "y": 400, "w": 660, "h": 560},
-            "text_defaults": {
-                "title": {"x": 80, "y": 70, "font_size": 52, "color": "#FFFFFF", "art_style": "shadow"},
-                "subtitle": {"x": 80, "y": 160, "font_size": 32, "color": "#E8FFF8", "art_style": "normal"},
-                "cta_text": {"x": 80, "y": 280, "font_size": 30, "color": "#2F6F6A", "button_color": "#FFFFFF"},
-            },
-        },
-    },
-    {
-        "id": 4,
-        "name": "竖版故事 · 短视频封面",
-        "preview_url": "/static/poster/templates/template_4.png",
-        "config": {
-            "purpose": "短视频/Story封面",
-            "layout_mode": "chips",
-            "canvas": {"width": 1080, "height": 1920},
-            "overlays": [
-                {"type": "top_fade", "ratio": 0.22, "color": [15, 20, 28, 150]},
-                {"type": "bottom_fade", "ratio": 0.22, "color": [15, 20, 28, 170]},
-            ],
-            "product_shadow": True,
-            "product": {"x": 140, "y": 520, "w": 800, "h": 800},
-            "text_defaults": {
-                "title": {"x": 70, "y": 120, "font_size": 58, "color": "#FFFFFF", "art_style": "shadow"},
-                "subtitle": {"x": 70, "y": 240, "font_size": 36, "color": "#F6C177", "art_style": "normal"},
-                "cta_text": {"x": 70, "y": 1680, "font_size": 38, "color": "#111111", "button_color": "#F6C177"},
-            },
-        },
-    },
-    {
-        "id": 5,
-        "name": "大促爆款 · 折扣突出",
-        "preview_url": "/static/poster/templates/template_5.png",
-        "config": {
-            "purpose": "大促/折扣",
-            "layout_mode": "stack",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [
-                {"type": "bottom_fade", "ratio": 0.34, "color": [180, 40, 40, 180]},
-                {"type": "vignette"},
-            ],
-            "product_shadow": True,
-            "product": {"x": 260, "y": 180, "w": 560, "h": 560},
-            "text_defaults": {
-                "title": {"x": 70, "y": 780, "font_size": 44, "color": "#FFFFFF", "art_style": "shadow"},
-                "subtitle": {"x": 70, "y": 860, "font_size": 48, "color": "#FFE566", "art_style": "shadow"},
-                "cta_text": {"x": 70, "y": 960, "font_size": 32, "color": "#B02828", "button_color": "#FFFFFF"},
-            },
-        },
-    },
-    {
-        "id": 6,
-        "name": "极简白底 · Amazon主图风",
-        "preview_url": "/static/poster/templates/template_6.png",
-        "config": {
-            "purpose": "Amazon主图/白底",
-            "layout_mode": "stack",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [{"type": "rect", "x": 0, "y": 0, "w": 1080, "h": 1080, "color": [248, 248, 246, 255]}],
-            "product_shadow": False,
-            "product": {"x": 190, "y": 140, "w": 700, "h": 700},
-            "text_defaults": {
-                "title": {"x": 70, "y": 880, "font_size": 36, "color": "#222222", "art_style": "normal"},
-                "subtitle": {"x": 70, "y": 940, "font_size": 26, "color": "#666666", "art_style": "normal"},
-                "cta_text": {"x": 700, "y": 920, "font_size": 26, "color": "#FFFFFF", "button_color": "#111111"},
-            },
-        },
-    },
-    {
-        "id": 7,
-        "name": "社交方形 · 种草分享",
-        "preview_url": "/static/poster/templates/template_7.png",
-        "config": {
-            "purpose": "小红书/Ins方图",
-            "layout_mode": "chips",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [
-                {"type": "bottom_fade", "ratio": 0.36, "color": [255, 255, 255, 200]},
-                {"type": "vignette"},
-            ],
-            "product_shadow": True,
-            "product": {"x": 220, "y": 80, "w": 640, "h": 640},
-            "text_defaults": {
-                "title": {"x": 64, "y": 760, "font_size": 42, "color": "#1C2A32", "art_style": "normal"},
-                "subtitle": {"x": 64, "y": 830, "font_size": 28, "color": "#2F6F6A", "art_style": "normal"},
-                "selling_point_1": {"x": 64, "y": 900, "font_size": 24, "color": "#4A5A63", "art_style": "normal"},
-                "cta_text": {"x": 64, "y": 970, "font_size": 28, "color": "#FFFFFF", "button_color": "#2F6F6A"},
-            },
-        },
-    },
-    {
-        "id": 8,
-        "name": "横幅促销 · 店铺顶栏",
-        "preview_url": "/static/poster/templates/template_8.png",
-        "config": {
-            "purpose": "店铺横幅",
-            "layout_mode": "stack",
-            "canvas": {"width": 1500, "height": 500},
-            "overlays": [{"type": "left_fade", "ratio": 0.58, "color": [36, 48, 56, 170]}],
-            "product_shadow": True,
-            "product": {"x": 900, "y": 40, "w": 520, "h": 420},
-            "text_defaults": {
-                "title": {"x": 60, "y": 90, "font_size": 52, "color": "#FFFFFF", "art_style": "shadow"},
-                "subtitle": {"x": 60, "y": 190, "font_size": 32, "color": "#F2D6A2", "art_style": "normal"},
-                "cta_text": {"x": 60, "y": 320, "font_size": 30, "color": "#243038", "button_color": "#F2D6A2"},
-            },
-        },
-    },
-    {
-        "id": 9,
-        "name": "图文融合 · 生活场景（推荐）",
-        "preview_url": "/static/poster/templates/template_9.png",
-        "config": {
-            "purpose": "生活场景图文融合",
-            "layout_mode": "lifestyle",
-            "subtitle_as_pill": True,
-            "title_underline": True,
-            "accent_color": "#5B7C6E",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [
-                {"type": "left_fade", "ratio": 0.52, "color": [248, 246, 242, 120]},
-                {"type": "frame", "inset": 36, "color": [255, 255, 255, 160]},
-            ],
-            "product_shadow": True,
-            "product": {"x": 430, "y": 280, "w": 580, "h": 680},
-            "text_defaults": {
-                "title": {"font_size": 52, "color": "#2A3036", "art_style": "normal", "font_name": "simhei"},
-                "subtitle": {"font_size": 26, "color": "#FFFFFF", "art_style": "normal", "pill_bg": "#3A3A3A"},
-                "selling_point_1": {"font_size": 24, "color": "#2A343A", "art_style": "normal"},
-                "selling_point_2": {"font_size": 24, "color": "#2A343A", "art_style": "normal"},
-                "cta_text": {"font_size": 30, "color": "#FFFFFF", "button_color": "#5B7C6E"},
-            },
-        },
-    },
-    {
-        "id": 10,
-        "name": "图文融合 · 暗色科技",
-        "preview_url": "/static/poster/templates/template_10.png",
-        "config": {
-            "purpose": "暗色科技图文融合",
-            "layout_mode": "premium_dark",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [
-                {"type": "top_fade", "ratio": 0.38, "color": [8, 16, 36, 170]},
-                {"type": "bottom_fade", "ratio": 0.22, "color": [8, 16, 36, 160]},
-            ],
-            "product_shadow": True,
-            "product": {"x": 220, "y": 300, "w": 640, "h": 560},
-            "text_defaults": {
-                "title": {"font_size": 56, "color": "#FFFFFF", "art_style": "shadow", "font_name": "simhei"},
-                "subtitle": {"font_size": 30, "color": "#A8C4FF", "art_style": "normal"},
-                "selling_point_1": {"font_size": 24, "color": "#FFFFFF", "art_style": "normal"},
-                "selling_point_2": {"font_size": 24, "color": "#FFFFFF", "art_style": "normal"},
-                "cta_text": {"font_size": 30, "color": "#0B1220", "button_color": "#E8F0FF"},
-            },
-        },
-    },
-    {
-        "id": 11,
-        "name": "图文融合 · 底栏规格",
-        "preview_url": "/static/poster/templates/template_11.png",
-        "config": {
-            "purpose": "底栏规格图文融合",
-            "layout_mode": "chips",
-            "title_underline": True,
-            "accent_color": "#6B8F71",
-            "canvas": {"width": 1080, "height": 1080},
-            "overlays": [
-                {"type": "soft_card", "ratio": 0.5, "height_ratio": 0.28, "x": 48, "y": 48, "color": [255, 255, 255, 150]},
-                {"type": "bottom_fade", "ratio": 0.26, "color": [255, 255, 255, 200]},
-            ],
-            "product_shadow": True,
-            "product": {"x": 280, "y": 220, "w": 520, "h": 620},
-            "text_defaults": {
-                "title": {"font_size": 46, "color": "#2A3036", "art_style": "normal", "font_name": "simhei"},
-                "subtitle": {"font_size": 26, "color": "#5B6B73", "art_style": "normal"},
-                "selling_point_1": {"font_size": 24, "color": "#2A343A", "art_style": "normal"},
-                "selling_point_2": {"font_size": 24, "color": "#2A343A", "art_style": "normal"},
-                "cta_text": {"font_size": 28, "color": "#FFFFFF", "button_color": "#6B8F71"},
-            },
+            "product": {"x": 260, "y": 360, "w": 560, "h": 560},
+            "title": {"x": 80, "y": 90, "font_size": 64, "color": "#FFFFFF"},
+            "discount": {"x": 80, "y": 180, "font_size": 84, "color": "#FFD700"},
+            "price": {"x": 80, "y": 290, "font_size": 56, "color": "#FFFFFF"},
         },
     },
 ]
 
 
-def _load_poster_engine():
-    module_path = Path(__file__).resolve().parents[4] / "poster_module" / "poster_service.py"
-    spec = importlib.util.spec_from_file_location("poster_engine", module_path)
-    engine = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(engine)
-    engine.STATIC_DIR = STATIC_DIR
-    engine.POSTER_DIR = POSTER_DIR
+@lru_cache(maxsize=1)
+def _poster_engine():
+    svc_path = REPO_ROOT / "module4-poster" / "poster_module" / "poster_service.py"
+    spec = importlib.util.spec_from_file_location("poster_engine_svc", svc_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    # 统一写到仓库根 static/poster，与 FastAPI 静态挂载一致
+    mod.STATIC_DIR = STATIC_DIR
+    mod.POSTER_DIR = POSTER_DIR
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    return engine
+    return mod
 
 
 def compose_poster(
@@ -245,10 +47,11 @@ def compose_poster(
     title: str = "",
     discount: str = "",
     price: str = "",
-    style_options: dict | None = None,
+    style_options: Optional[dict] = None,
 ) -> str:
-    engine = _load_poster_engine()
-    raw_url = engine.compose_poster(
+    """合成海报，返回 /static/poster/... URL"""
+    engine = _poster_engine()
+    return engine.compose_poster(
         matted_url=matted_url,
         bg_url=bg_url,
         template_config=template_config,
@@ -257,48 +60,40 @@ def compose_poster(
         price=price,
         style_options=style_options or {},
     )
-    if raw_url.startswith("/static/posters/"):
-        filename = raw_url.rsplit("/", 1)[-1]
-        src = Path(__file__).resolve().parents[4] / "poster_module" / "static" / "posters" / filename
-        target = POSTER_DIR / filename
-        if src.exists():
-            target.write_bytes(src.read_bytes())
-        elif (STATIC_DIR / "posters" / filename).exists():
-            target.write_bytes((STATIC_DIR / "posters" / filename).read_bytes())
-        return f"/static/poster/{filename}"
-    if raw_url.startswith("/static/poster/"):
-        return raw_url
-    filename = raw_url.rsplit("/", 1)[-1]
-    if (POSTER_DIR / filename).exists():
-        return f"/static/poster/{filename}"
-    return raw_url
 
 
 def init_templates(db):
-    """创建或更新模板（可重复执行，按 id upsert）。"""
+    """初始化模板数据到数据库（仅当表为空时）"""
     from app.models.poster import Template
 
-    # 下线「居中主图」
-    old = db.query(Template).filter(Template.id == 1).first()
-    if old:
-        old.is_active = False
-        old.name = "（已下线）居中主图"
+    if db.query(Template).count() > 0:
+        return
 
-    for t in TEMPLATE_DATA:
-        row = db.query(Template).filter(Template.id == t["id"]).first()
-        cfg = json.dumps(t["config"], ensure_ascii=False)
-        if row:
-            row.name = t["name"]
-            row.preview_url = t["preview_url"]
-            row.config_json = cfg
-            row.is_active = True
+    # 优先用 poster_module 完整模板
+    templates_path = REPO_ROOT / "module4-poster" / "poster_module" / "templates_data.py"
+    items = TEMPLATE_DATA
+    if templates_path.exists():
+        try:
+            spec = importlib.util.spec_from_file_location("poster_templates_data", templates_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if getattr(mod, "TEMPLATES", None):
+                items = mod.TEMPLATES
+            elif getattr(mod, "TEMPLATE_DATA", None):
+                items = mod.TEMPLATE_DATA
+        except Exception as exc:
+            print(f"[poster] load templates_data failed: {exc}")
+
+    for t in items:
+        cfg = t.get("config") or t.get("config_json") or {}
+        if isinstance(cfg, str):
+            cfg_json = cfg
         else:
-            db.add(
-                Template(
-                    id=t["id"],
-                    name=t["name"],
-                    preview_url=t["preview_url"],
-                    config_json=cfg,
-                )
-            )
+            cfg_json = json.dumps(cfg, ensure_ascii=False)
+        db.add(Template(
+            id=t.get("id"),
+            name=t.get("name") or f"模板{t.get('id')}",
+            preview_url=t.get("preview_url") or "",
+            config_json=cfg_json,
+        ))
     db.commit()
