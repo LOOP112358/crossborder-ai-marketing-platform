@@ -1,6 +1,6 @@
 <template>
   <div class="writing-page sketch-shell">
-    <!-- 左侧：输入表�?-->
+    <!-- 左侧：输入表单 -->
     <div class="input-panel">
       <el-card shadow="never">
         <template #header>
@@ -65,7 +65,7 @@
             </el-select>
           </el-form-item>
 
-          <!-- 风格选择 �?手绘线稿图标 -->
+          <!-- 风格选择 — 手绘线稿图标 -->
           <el-form-item :label="$t('writing.style')">
             <div class="style-grid">
               <div
@@ -90,7 +90,7 @@
       </el-card>
     </div>
 
-    <!-- 右侧：结果展�?-->
+    <!-- 右侧：结果展示 -->
     <div class="result-panel">
       <div v-if="results.length > 0">
         <el-card v-for="(item, idx) in results" :key="idx" class="result-card" shadow="hover">
@@ -123,8 +123,8 @@
         </el-card>
       </div>
 
-      <!-- 空状�?-->
-      <el-empty v-else description="选择风格 �?输入商品信息 �?点击生成" />
+      <!-- 空状态 -->
+      <el-empty v-else description="选择风格 → 输入商品信息 → 点击生成" />
 
       <!-- 历史记录 -->
       <div class="history-bar">
@@ -132,7 +132,7 @@
           <el-icon><Clock /></el-icon> {{ $t('writing.history') }}
         </el-button>
         <el-button text type="success" @click="$router.push('/my-works?tab=writing')">
-          全部作品�?
+          全部作品库
         </el-button>
       </div>
     </div>
@@ -223,9 +223,9 @@ function applyProduct(p, notify = true) {
   selectedProductId.value = p.id
   form.product_name = p.name || p.item_name || ''
   const angle = appStore.campaignHint?.angle
-  const baseFeatures = p.features || (p.feature_list || []).join('�?) || ''
+  const baseFeatures = p.features || (p.feature_list || []).join('、') || ''
   form.product_features = angle
-    ? `【活动角度�?{angle}${baseFeatures ? `�?{baseFeatures}` : ''}`
+    ? `【活动角度】${angle}${baseFeatures ? `；${baseFeatures}` : ''}`
     : baseFeatures
   if (appStore.campaignHint?.platforms?.length) {
     form.platforms = [...appStore.campaignHint.platforms]
@@ -254,7 +254,7 @@ function clearCatalogSelection() {
   selectedProductId.value = null
 }
 
-// 手绘线稿图标（青绿描边，�?sketch 主题一致）
+// 手绘线稿图标（青绿描边，与 sketch 主题一致）
 const STYLE_ICONS = {
   professional: `<svg viewBox="0 0 48 48" fill="none"><path d="M10 18.2c8.5-.8 19.2-.6 28.2.4v18.6c-9.2.9-19.4.7-28.2-.3V18.2z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.5c2.2-5.2 7.4-7.8 14.1-7.6 6.4.2 11.2 2.9 13.9 7.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M21.5 18.2v3.8c0 1.6 1.2 2.6 2.7 2.6s2.6-1 2.6-2.6v-3.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 26.5h6.2M28 26.5h6.5M14 31.5h20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg>`,
   casual: `<svg viewBox="0 0 48 48" fill="none"><path d="M24.2 38c-1.2-6.8-1.5-12.4-.4-17.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M23.8 22.2c-4.6-5.2-9.8-6.8-13.6-4.4-2.8 1.8-2.6 5.6.6 7.4 3.6 2.1 8.4.6 13-3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M24.6 20.8c4.2-4.8 9.4-6.2 13.1-3.6 2.6 1.9 2.2 5.5-.8 7.1-3.4 1.8-8.2.4-12.3-3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 36.5c3.8 1.4 8.2 1.5 12 .2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".7"/></svg>`,
@@ -273,7 +273,7 @@ const styleOptions = computed(() => [
   { value: 'luxury',       label: t('writing.styleLuxury'),       desc: t('writing.styleDesc.luxury') },
 ])
 
-const langNames = { zh: '中文', en: 'English', ja: '日本�?, ko: '한국�?, es: 'Español' }
+const langNames = { zh: '中文', en: 'English', ja: '日本語', ko: '한국어', es: 'Español' }
 
 function getLangName(lang) { return langNames[lang] || lang }
 function getStyleName(style) { return t(`writing.style${style.charAt(0).toUpperCase() + style.slice(1)}`) }
@@ -308,7 +308,7 @@ function copyText(text) {
 }
 
 function copyAll(item) {
-  const text = `�?{t('writing.resultTitle')}�?{item.title}\n�?{t('writing.resultBody')}�?{item.body}\n�?{t('writing.resultTags')}�?{item.tags}`
+  const text = `【${t('writing.resultTitle')}】${item.title}\n【${t('writing.resultBody')}】${item.body}\n【${t('writing.resultTags')}】${item.tags}`
   copyText(text)
 }
 
@@ -376,7 +376,7 @@ onMounted(() => {
 .product-opt-name { display: block; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
 .product-opt-meta { display: block; font-size: 11px; color: #909399; }
 
-/* 风格卡片 �?手绘�?*/
+/* 风格卡片 — 手绘感 */
 .style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 .style-card {
   border: 2px solid var(--line, #2c3a42);

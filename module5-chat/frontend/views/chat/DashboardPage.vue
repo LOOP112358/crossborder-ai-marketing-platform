@@ -228,7 +228,7 @@
         <h3>AI 运营建议</h3>
         <el-button class="sketch-btn" size="small" :loading="adviceLoading" @click="loadAdvice">重新生成</el-button>
       </div>
-      <div class="advice-text" v-if="advice">{{ advice }}</div>
+      <div class="advice-text msg-md" v-if="advice" v-html="renderMarkdown(advice)" />
       <el-empty v-else description="正在生成运营建议…" />
     </div>
   </div>
@@ -237,7 +237,19 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { marked } from 'marked'
 import request from '@/api/request'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  try {
+    return marked.parse(String(text))
+  } catch {
+    return String(text).replace(/</g, '&lt;')
+  }
+}
 
 const COLORS = {
   '文案生成': '#2f6f6a',
@@ -771,10 +783,29 @@ onBeforeUnmount(() => {
 
 .advice-panel { min-height: 120px; }
 .advice-text {
-  white-space: pre-wrap;
   line-height: 1.85;
   font-size: 14px;
   color: var(--ink);
+}
+.msg-md :deep(p) { margin: 0 0 0.55em; line-height: 1.65; }
+.msg-md :deep(p:last-child) { margin-bottom: 0; }
+.msg-md :deep(ul), .msg-md :deep(ol) {
+  margin: 0.35em 0 0.55em;
+  padding-left: 1.25em;
+}
+.msg-md :deep(li) { margin: 0.2em 0; line-height: 1.55; }
+.msg-md :deep(h1), .msg-md :deep(h2), .msg-md :deep(h3) {
+  margin: 0.4em 0 0.35em;
+  font-family: var(--font-display);
+  font-size: 1.05em;
+  font-weight: 600;
+}
+.msg-md :deep(strong) { color: #1f4f4b; font-weight: 650; }
+.msg-md :deep(code) {
+  background: rgba(44, 58, 66, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.92em;
 }
 
 @media (max-width: 768px) {

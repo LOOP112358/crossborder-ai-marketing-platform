@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * 全局应用状态（成员2/3/4协作共享�?
+ * 全局应用状态（成员2/3/4协作共享）
  * 支持 ABO 商品库选品：图文一体带入海报工作流
  */
 export const useAppStore = defineStore('app', () => {
@@ -14,7 +14,7 @@ export const useAppStore = defineStore('app', () => {
   const selectedProductId = ref(null)
   const selectedProduct = ref(null)
   const productImageUrl = ref('')
-  /** 与当前抠图结果绑定的商品 id，用于防止图文串�?*/
+  /** 与当前抠图结果绑定的商品 id，用于防止图文串货 */
   const mattedProductId = ref(null)
 
   // 成员3：Seedream 背景
@@ -33,7 +33,7 @@ export const useAppStore = defineStore('app', () => {
     discount: '',
     price: '',
   })
-  /** 当前 posterConfig 对应的商�?id，换品必须清掉旧文案 */
+  /** 当前 posterConfig 对应的商品 id，换品必须清掉旧文案 */
   const posterConfigProductId = ref(null)
 
   const EMPTY_COPY = {
@@ -86,7 +86,7 @@ export const useAppStore = defineStore('app', () => {
       if (product.category) category.value = product.category
       categoryEn.value = product.category_en || product.product_type || categoryEn.value
     }
-    // 换品：先清空旧文案，避免和下一件商品串�?
+    // 换品：先清空旧文案，避免和下一件商品串货
     if (prevId != null && nextId != null && Number(prevId) !== Number(nextId)) {
       clearPosterConfig()
     }
