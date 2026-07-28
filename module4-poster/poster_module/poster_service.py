@@ -1,41 +1,102 @@
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pathlib import Path
 from typing import Optional
+import os
 import re
 import uuid
 
 BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
-POSTER_DIR = STATIC_DIR / "posters"
+REPO_ROOT = BASE_DIR.parents[1]  # module4-poster/
+# 合成结果统一写到仓库根 static/poster（与 FastAPI 挂载一致）
+STATIC_DIR = REPO_ROOT.parent / "static"
+POSTER_DIR = STATIC_DIR / "poster"
 POSTER_DIR.mkdir(parents=True, exist_ok=True)
 
 
-FONT_MAP = {
-    "msyh": "C:/Windows/Fonts/msyh.ttc",
-    "simhei": "C:/Windows/Fonts/simhei.ttf",
-    "simsun": "C:/Windows/Fonts/simsun.ttc",
-    "kaiti": "C:/Windows/Fonts/simkai.ttf",
-    "arial": "C:/Windows/Fonts/arial.ttf",
-    "impact": "C:/Windows/Fonts/impact.ttf",
+# Windows / Linux 中文字体候选（云服务器务必安装 fonts-noto-cjk 或文泉驿）
+_FONT_CANDIDATES = {
+    "msyh": [
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/msyhbd.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        str(REPO_ROOT / "fonts" / "NotoSansSC-Regular.otf"),
+        str(REPO_ROOT.parent / "shared" / "fonts" / "NotoSansSC-Regular.otf"),
+    ],
+    "simhei": [
+        "C:/Windows/Fonts/simhei.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ],
+    "simsun": [
+        "C:/Windows/Fonts/simsun.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ],
+    "kaiti": [
+        "C:/Windows/Fonts/simkai.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ],
+    "arial": [
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ],
+    "impact": [
+        "C:/Windows/Fonts/impact.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    ],
 }
+
+# 兼容旧代码读 FONT_MAP
+FONT_MAP = {k: v[0] for k, v in _FONT_CANDIDATES.items()}
+
+_font_resolve_logged = False
+
+
+def _iter_font_paths(font_name: str = "msyh"):
+    env_path = os.getenv("POSTER_FONT_PATH", "").strip()
+    if env_path:
+        yield env_path
+    for path in _FONT_CANDIDATES.get(font_name) or []:
+        yield path
+    # 再扫一遍常用中文字体，避免指定名不存在时整页变方框
+    for paths in _FONT_CANDIDATES.values():
+        for path in paths:
+            yield path
 
 
 def load_font(size: int, font_name: str = "msyh"):
-    font_path = FONT_MAP.get(font_name)
+    global _font_resolve_logged
+    seen = set()
+    for path in _iter_font_paths(font_name):
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        p = Path(path)
+        if not p.is_file():
+            continue
+        try:
+            if not _font_resolve_logged:
+                print(f"[poster] using font: {p}")
+                _font_resolve_logged = True
+            return ImageFont.truetype(str(p), size)
+        except Exception as exc:
+            print(f"[poster] font load failed {p}: {exc}")
+            continue
 
-    if font_path and Path(font_path).exists():
-        return ImageFont.truetype(font_path, size)
-
-    fallback_paths = [
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/simhei.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-    ]
-
-    for path in fallback_paths:
-        if Path(path).exists():
-            return ImageFont.truetype(path, size)
-
+    print(
+        "[poster] WARNING: no CJK font found. "
+        "On Linux install: apt-get install -y fonts-noto-cjk fonts-wqy-microhei "
+        "or set POSTER_FONT_PATH=/path/to/font.ttf"
+    )
     return ImageFont.load_default()
 
 

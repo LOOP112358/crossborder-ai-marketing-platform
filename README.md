@@ -46,6 +46,21 @@ cp .env.example .env
 | `LLM_*` 或 `OPENAI_*` | 文案与客服 |
 | `ABO_LISTINGS_DIR` / `ABO_IMAGES_DIR` | 本地 ABO 知识库路径 |
 | `MATTE_USE_REMBG=1` | 需要 AI 精细抠图时开启 |
+| `POSTER_FONT_PATH` | 可选，云端指定中文字体绝对路径 |
+
+### Linux / 云服务器注意
+
+海报合成依赖**中文字体**。Windows 本机有微软雅黑所以正常；Ubuntu 云主机若未装 CJK 字体会出现方框、乱线、叠字错位。
+
+```bash
+sudo apt-get update
+sudo apt-get install -y fonts-noto-cjk fonts-wqy-microhei
+# 或在 .env 指定：
+# POSTER_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+sudo systemctl restart crossborder.service
+```
+
+同时确认云端 `.env` 已配置与本地一致的 `ARK_API_KEY`、`LLM_API_KEY`（否则精修/短文案会回退成生硬的库内英文标题）。
 
 ### 2. 启动后端
 

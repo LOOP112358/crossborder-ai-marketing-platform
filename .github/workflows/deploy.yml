@@ -21,9 +21,13 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            echo "[2/5] Update Python dependencies..."
+            echo "[2/5] Update Python dependencies + CJK fonts..."
             source venv/bin/activate
             pip install -r requirements.txt -q
+            # 海报中文叠字需要 CJK 字体（本机 Windows 有雅黑，云端 Linux 默认没有）
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get install -y -qq fonts-noto-cjk fonts-wqy-microhei || true
+            fi
 
             echo "[3/5] Rebuild frontend..."
             cd shared/frontend
