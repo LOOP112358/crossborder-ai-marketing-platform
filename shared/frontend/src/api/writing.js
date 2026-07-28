@@ -41,6 +41,12 @@ export function getPosterCopy(productId, language = 'zh', llm = true) {
   })
 }
 
+export function getSimilarProducts(productId, limit = 8) {
+  return request.get(`/writing/products/${productId}/similar`, {
+    params: { limit },
+  })
+}
+
 export function listCampaigns() {
   return request.get('/writing/campaigns')
 }

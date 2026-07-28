@@ -77,7 +77,8 @@ const productLabel = computed(() => {
 })
 
 watch(step, (v) => {
-  router.replace({ path: '/poster-workflow', query: { ...route.query, step: String(v) } })
+  const path = route.path.startsWith('/writing-poster') ? '/writing-poster' : '/poster-workflow'
+  router.replace({ path, query: { ...route.query, step: String(v) } })
 })
 
 watch(
