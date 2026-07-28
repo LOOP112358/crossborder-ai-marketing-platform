@@ -16,7 +16,7 @@ jobs:
           password: ${{ secrets.DEPLOY_PASSWORD }}
           script: |
             set -e
-            cd /opt/crossborder-ai
+            cd /root/code/group19/crossborder-ai
             echo "[1/5] Pull latest code..."
             git fetch origin main
             git reset --hard origin/main
