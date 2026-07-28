@@ -101,6 +101,8 @@ def on_startup():
         print(f"[startup] ABO 知识库初始化跳过: {e}")
 
     # 提示：商品缺图时需手动回填（避免每次启动扫全量 listings）
+    # 全量表 COUNT（尤其缺图 OR 扫描）在 ~10万+ 行时会拖慢 uvicorn 绑端口，
+    # 导致 deploy/backfill 里过短的 health curl 报 connection refused。
     try:
         from app.core.database import SessionLocal
         from app.models.chat import AboProduct
@@ -108,17 +110,20 @@ def on_startup():
 
         db = SessionLocal()
         try:
-            missing = (
-                db.query(AboProduct)
-                .filter(or_(AboProduct.image_path.is_(None), AboProduct.image_path == ""))
-                .count()
-            )
             total = db.query(AboProduct).count()
-            if total and missing:
-                print(
-                    f"[startup] 提示：{missing}/{total} 条商品尚无图片路径，"
-                    f"请运行: python scripts/import_abo_kb.py --backfill-images"
+            if total and total <= 20000:
+                missing = (
+                    db.query(AboProduct)
+                    .filter(or_(AboProduct.image_path.is_(None), AboProduct.image_path == ""))
+                    .count()
                 )
+                if missing:
+                    print(
+                        f"[startup] 提示：{missing}/{total} 条商品尚无图片路径，"
+                        f"请运行: python scripts/import_abo_kb.py --backfill-images"
+                    )
+            elif total:
+                print(f"[startup] ABO products={total} (skip missing-image scan on large DB)")
         finally:
             db.close()
     except Exception as e:

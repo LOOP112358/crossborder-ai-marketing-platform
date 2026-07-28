@@ -41,13 +41,28 @@ jobs:
 
             echo "[5/5] Reload Nginx + health check..."
             sudo nginx -s reload
-            sleep 2
-            if ! curl -fsS "http://127.0.0.1:8000/api/health" >/dev/null; then
-              echo "Health check failed!"
-              journalctl -u crossborder.service -n 40 --no-pager || true
+            HEALTH_URL="http://127.0.0.1:8000/api/health"
+            ok=0
+            for i in $(seq 1 20); do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "Health OK (attempt $i/20)"
+                ok=1
+                break
+              fi
+              if ! systemctl is-active --quiet crossborder.service; then
+                echo "Backend died while waiting for health"
+                journalctl -u crossborder.service -n 80 --no-pager || true
+                exit 1
+              fi
+              echo "  waiting for :8000 ... ($i/20)"
+              sleep 3
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Health check failed after ~60s"
+              journalctl -u crossborder.service -n 80 --no-pager || true
               exit 1
             fi
 
             echo "Deploy done!"
             systemctl status crossborder.service --no-pager | head -5
-            curl -fsS "http://127.0.0.1:8000/api/health" || true
+            curl -fsS "$HEALTH_URL" || true

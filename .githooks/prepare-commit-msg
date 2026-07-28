@@ -1,0 +1,16 @@
+#!/bin/sh
+# Strip Cursor co-author trailers so GitHub commits stay single-author.
+COMMIT_MSG_FILE=$1
+
+if [ ! -f "$COMMIT_MSG_FILE" ]; then
+  exit 0
+fi
+
+if ! grep -qiE '^Co-authored-by:.*[Cc]ursor' "$COMMIT_MSG_FILE"; then
+  exit 0
+fi
+
+tmp="${COMMIT_MSG_FILE}.tmp"
+grep -viE '^Co-authored-by:.*[Cc]ursor' "$COMMIT_MSG_FILE" > "$tmp" || true
+mv "$tmp" "$COMMIT_MSG_FILE"
+exit 0
