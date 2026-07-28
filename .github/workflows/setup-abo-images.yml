@@ -109,16 +109,41 @@ jobs:
             python scripts/import_abo_kb.py --backfill-images
             python scripts/import_abo_kb.py --import-with-images --limit 0
             # 大批量时跳过 FAISS 全量重建，避免 OOM；检索仍可用品类/关键词
-            echo "[7] Restart backend + nginx..."
+            echo "[7] Restart backend + nginx (wait for uvicorn bind)..."
             systemctl start crossborder.service
-            sleep 4
+            sleep 2
             if ! systemctl is-active --quiet crossborder.service; then
-              journalctl -u crossborder.service -n 50 --no-pager || true
+              echo "Backend service failed to become active"
+              journalctl -u crossborder.service -n 80 --no-pager || true
               exit 1
             fi
             nginx -s reload || true
-            curl -fsS "http://127.0.0.1:8000/api/health"
-            echo
+
+            HEALTH_URL="http://127.0.0.1:8000/api/health"
+            ok=0
+            for i in $(seq 1 30); do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "Health OK (attempt $i/30)"
+                curl -fsS "$HEALTH_URL" || true
+                echo
+                ok=1
+                break
+              fi
+              if ! systemctl is-active --quiet crossborder.service; then
+                echo "Backend died while waiting for health (attempt $i/30)"
+                journalctl -u crossborder.service -n 80 --no-pager || true
+                exit 1
+              fi
+              echo "  waiting for :8000 ... ($i/30)"
+              sleep 3
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Health check failed after ~90s"
+              systemctl status crossborder.service --no-pager || true
+              journalctl -u crossborder.service -n 80 --no-pager || true
+              ss -lntp 2>/dev/null | grep -E ':8000\b' || true
+              exit 1
+            fi
             echo "ABO setup done."
             ls -ld "$DATA_DIR/listings/metadata" "$DATA_DIR/images/small" || true
             du -sh "$DATA_DIR" || true

@@ -1,3 +1,4 @@
+import json
 import shutil, re, httpx
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -167,6 +168,27 @@ def delete_session(
     return _ok({"id": session_id}, "会话已删除")
 
 
+def _parse_products_json(raw: str | None) -> list:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _message_dict(msg: ChatMessage, *, products: list | None = None, feedback: str | None = None) -> dict:
+    """序列化消息；显式写入 products，避免 Pydantic 丢字段导致刷新后无图。"""
+    data = MessageOut.model_validate(msg).model_dump()
+    if products is None:
+        products = _parse_products_json(getattr(msg, "products_json", None))
+    data["products"] = products or []
+    if feedback is not None:
+        data["feedback"] = feedback
+    return data
+
+
 @router.get("/messages/{session_id}")
 def get_messages(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
@@ -181,11 +203,12 @@ def get_messages(session_id: int, current_user: User = Depends(get_current_user)
     )
     result = []
     for msg in messages:
-        out = MessageOut.model_validate(msg)
+        feedback = None
         if msg.role == "assistant":
             fb = db.query(ChatFeedback).filter(ChatFeedback.message_id == msg.id).first()
-            if fb: out.feedback = fb.feedback_type
-        result.append(out.model_dump())
+            if fb:
+                feedback = fb.feedback_type
+        result.append(_message_dict(msg, feedback=feedback))
     return _ok(result)
 
 
@@ -285,7 +308,7 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
             if len(contexts) >= 8:
                 break
 
-    # 翻译结果中的 product_type 再补一轮
+    # 翻译结果中的 product_type 再补一轮（同样优先有图）
     if translated:
         keywords = set(re.findall(r"[A-Z_]{4,}", translated))
         if keywords:
@@ -294,8 +317,12 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
                 .filter(AboProduct.product_type.in_(keywords)).all()
             )
             seen_ids = {p.item_id for p in products}
+            has_img = AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
             for pt in valid_types:
-                rows = db.query(AboProduct).filter(AboProduct.product_type == pt).limit(5).all()
+                base = db.query(AboProduct).filter(AboProduct.product_type == pt)
+                rows = base.filter(has_img).order_by(AboProduct.id.asc()).limit(5).all()
+                if not rows:
+                    rows = base.order_by(AboProduct.id.asc()).limit(5).all()
                 for p in rows:
                     if p.item_id not in seen_ids:
                         seen_ids.add(p.item_id)
@@ -303,7 +330,12 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
                         if p.faq_text and p.faq_text not in contexts:
                             contexts.insert(0, p.faq_text)
 
-    products = products[:6]
+    # 有图商品排前面，避免卡片混进空缩略图
+    products = sorted(
+        products,
+        key=lambda p: (0 if (getattr(p, "image_path", None) or "").strip() else 1, p.id or 0),
+    )[:6]
+    product_cards = [product_to_card(p) for p in products]
     catalog_summary = _build_catalog_summary(db)
 
     # 无 LLM 且已命中商品：用结构化 Markdown；否则走 LLM/模板
@@ -319,6 +351,7 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
         role="assistant",
         content=answer,
         language=lang,
+        products_json=json.dumps(product_cards, ensure_ascii=False) if product_cards else None,
     )
     db.add(assistant_msg)
     db.commit()
@@ -342,10 +375,10 @@ async def send_message(body: MessageCreate, current_user: User = Depends(get_cur
     refresh_daily_stats(db)
 
     return _ok({
-        "user_message": MessageOut.model_validate(user_msg).model_dump(),
-        "assistant_message": MessageOut.model_validate(assistant_msg).model_dump(),
+        "user_message": _message_dict(user_msg, products=[]),
+        "assistant_message": _message_dict(assistant_msg, products=product_cards),
         "sources": contexts[:3],
-        "products": [product_to_card(p) for p in products],
+        "products": product_cards,
         "session_title": session.title,
         "session_id": session.id,
     }, "回复成功")

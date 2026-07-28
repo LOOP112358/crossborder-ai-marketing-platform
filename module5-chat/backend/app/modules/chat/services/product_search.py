@@ -209,11 +209,31 @@ def format_product_answer(question: str, products: List[AboProduct], language: s
     return "\n".join(lines).strip()
 
 
+def _demo_image_for_type(product_type: str | None) -> str:
+    pt = (product_type or "").upper()
+    if any(k in pt for k in ("HEADPHONE", "EARPHONE", "EARBUD", "AUDIO", "ELECTRONIC")):
+        name = "headphones.svg"
+    elif any(k in pt for k in ("SHOE", "FOOTWEAR", "SANDAL", "BOOT", "SNEAKER")):
+        name = "shoes.svg"
+    elif any(k in pt for k in ("BOTTLE", "KITCHEN", "CUP", "MUG")):
+        name = "bottle.svg"
+    elif any(k in pt for k in ("APPAREL", "SHIRT", "DRESS", "CLOTH")):
+        name = "apparel.svg"
+    elif any(k in pt for k in ("HOME", "LAMP", "FURNITURE", "SOFA", "CHAIR", "TABLE", "RUG")):
+        name = "home.svg"
+    else:
+        name = "product.svg"
+    return f"/static/demo-products/{name}"
+
+
 def product_to_card(p: AboProduct) -> dict:
-    """前端商品卡片字段。"""
+    """前端商品卡片字段。有 ABO 实图用实图，否则品类演示图兜底。"""
     bullets_zh = (p.bullet_points_zh or "").replace("；", "|")
     bullets_en = (p.bullet_points or "").replace(";", "|")
     highlights = [x.strip() for x in (bullets_zh or bullets_en).split("|") if x.strip()][:3]
+    image_url = (p.image_url or "").strip() or _demo_image_for_type(p.product_type)
+    if image_url and not image_url.startswith(("/", "http://", "https://", "data:")):
+        image_url = "/" + image_url.lstrip("/")
     return {
         "item_id": p.item_id,
         "name": p.item_name_zh or p.item_name or "商品",
@@ -222,7 +242,8 @@ def product_to_card(p: AboProduct) -> dict:
         "product_type": p.product_type or "",
         "color": p.color or "",
         "highlights": highlights,
-        "image_url": p.image_url,
+        "image_url": image_url,
+        "image_path": (getattr(p, "image_path", None) or "").strip(),
     }
 
 

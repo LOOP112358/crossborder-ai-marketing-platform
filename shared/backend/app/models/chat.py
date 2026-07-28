@@ -21,6 +21,8 @@ class ChatMessage(Base):
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     language = Column(String(10), default="zh")
+    # 助手消息附带的商品卡片 JSON（刷新会话后仍能显示缩略图）
+    products_json = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
 
 

@@ -50,8 +50,10 @@
             <div class="message-area" ref="msgArea">
               <div v-for="m in messages" :key="m.id" class="msg-row" :class="m.role">
                 <div class="msg-bubble">
+                  <!-- 流式阶段用纯文本，避免 marked 反复解析半截 Markdown 卡死 UI -->
+                  <div v-if="m.role === 'assistant' && m.streaming" class="msg-text msg-stream">{{ m.content }}<span class="caret">▍</span></div>
                   <div
-                    v-if="m.role === 'assistant'"
+                    v-else-if="m.role === 'assistant'"
                     class="msg-md"
                     v-html="renderMarkdown(m.content)"
                   />
@@ -60,8 +62,14 @@
                   <div v-if="m.products?.length" class="product-strip">
                     <div v-for="p in m.products" :key="p.item_id" class="product-card">
                       <div class="product-thumb" :style="thumbStyle(p)">
-                        <img v-if="p.image_url" :src="p.image_url" :alt="p.name" @error="onImgError" />
-                        <span v-else class="thumb-fallback">{{ (p.name || '?').slice(0, 1) }}</span>
+                        <img
+                          v-if="resolveProductImage(p)"
+                          :src="resolveProductImage(p)"
+                          :alt="p.name"
+                          loading="lazy"
+                          @error="onImgError($event, p)"
+                        />
+                        <span v-else class="thumb-fallback">{{ (p.name || '?').slice(0, 1).toUpperCase() }}</span>
                       </div>
                       <div class="product-body">
                         <div class="product-name">{{ p.name }}</div>
@@ -163,14 +171,81 @@ const currentTitle = computed(() => {
 })
 
 const THUMB_COLORS = ['#2f6f6a', '#c45c26', '#4a6fa5', '#b7791f', '#3d7a52']
+const brokenImgIds = ref(new Set())
+const PRODUCT_CACHE_KEY = 'chat_msg_products_v1'
+
+function readProductCache() {
+  try {
+    return JSON.parse(sessionStorage.getItem(PRODUCT_CACHE_KEY) || '{}') || {}
+  } catch {
+    return {}
+  }
+}
+
+function cacheMessageProducts(messageId, products) {
+  if (!messageId || !products?.length) return
+  try {
+    const all = readProductCache()
+    all[String(messageId)] = products
+    const keys = Object.keys(all)
+    if (keys.length > 200) keys.slice(0, keys.length - 200).forEach((k) => delete all[k])
+    sessionStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(all))
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function cachedProductsFor(messageId) {
+  if (!messageId) return []
+  const hit = readProductCache()[String(messageId)]
+  return Array.isArray(hit) ? hit : []
+}
+
+function pickProducts(payload) {
+  const fromAsst = payload?.assistant_message?.products
+  if (Array.isArray(fromAsst) && fromAsst.length) return fromAsst
+  if (Array.isArray(payload?.products) && payload.products.length) return payload.products
+  return []
+}
+
+function normalizeImageUrl(url) {
+  const u = String(url || '').trim()
+  if (!u) return ''
+  if (/^https?:\/\//i.test(u) || u.startsWith('data:') || u.startsWith('/')) return u
+  return `/${u}`
+}
 
 function thumbStyle(p) {
   const i = Math.abs(String(p.item_id || p.name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % THUMB_COLORS.length
   return { '--thumb': THUMB_COLORS[i] }
 }
 
-function onImgError(e) {
-  e.target.style.display = 'none'
+function demoImageForProduct(p) {
+  const pt = String(p?.product_type || '').toUpperCase()
+  let name = 'product.svg'
+  if (/HEADPHONE|EARPHONE|EARBUD|AUDIO|ELECTRONIC/.test(pt)) name = 'headphones.svg'
+  else if (/SHOE|FOOTWEAR|SANDAL|BOOT|SNEAKER/.test(pt)) name = 'shoes.svg'
+  else if (/BOTTLE|KITCHEN|CUP|MUG/.test(pt)) name = 'bottle.svg'
+  else if (/APPAREL|SHIRT|DRESS|CLOTH/.test(pt)) name = 'apparel.svg'
+  else if (/HOME|LAMP|FURNITURE|SOFA|CHAIR/.test(pt)) name = 'home.svg'
+  return `/static/demo-products/${name}`
+}
+
+function resolveProductImage(p) {
+  if (!p || brokenImgIds.value.has(String(p.item_id))) return ''
+  return normalizeImageUrl(p.image_url) || demoImageForProduct(p)
+}
+
+function onImgError(e, p) {
+  const img = e?.target
+  if (!img) return
+  if (!img.dataset.fallbackTried) {
+    img.dataset.fallbackTried = '1'
+    img.src = demoImageForProduct(p)
+    return
+  }
+  brokenImgIds.value.add(String(p?.item_id || ''))
+  img.style.display = 'none'
 }
 
 function renderMarkdown(text) {
@@ -200,18 +275,30 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function typewriterReveal(msgRef, fullText) {
+function patchMessage(messageId, partial) {
+  const i = messages.value.findIndex((m) => m.id === messageId)
+  if (i < 0) return
+  // 必须替换数组项，不能改 push 前的裸对象——否则 Vue 不触发重绘，字会「卡死」
+  messages.value[i] = { ...messages.value[i], ...partial }
+}
+
+async function typewriterReveal(messageId, fullText) {
   const text = fullText || ''
-  msgRef.content = ''
-  msgRef.streaming = true
-  const step = Math.max(1, Math.floor(text.length / 80))
-  for (let i = 0; i < text.length; i += step) {
-    msgRef.content = text.slice(0, Math.min(i + step, text.length))
-    if (i % (step * 4) === 0) scrollBottom()
-    await sleep(18)
+  patchMessage(messageId, { content: '', streaming: true })
+  if (!text) {
+    patchMessage(messageId, { content: '', streaming: false })
+    return
   }
-  msgRef.content = text
-  msgRef.streaming = false
+  const step = Math.max(1, Math.ceil(text.length / 60))
+  for (let i = 0; i < text.length; i += step) {
+    patchMessage(messageId, {
+      content: text.slice(0, Math.min(i + step, text.length)),
+      streaming: true,
+    })
+    if (i === 0 || i % (step * 3) === 0) scrollBottom()
+    await sleep(14)
+  }
+  patchMessage(messageId, { content: text, streaming: false })
   scrollBottom()
 }
 
@@ -250,7 +337,12 @@ async function loadMessages() {
   if (!currentSessionId.value) return
   try {
     const rows = await request.get(`/chat/messages/${currentSessionId.value}`)
-    messages.value = (rows || []).map((m) => ({ ...m, products: m.products || [] }))
+    messages.value = (rows || []).map((m) => {
+      const fromApi = Array.isArray(m.products) && m.products.length ? m.products : []
+      const products = fromApi.length ? fromApi : cachedProductsFor(m.id)
+      if (products.length) cacheMessageProducts(m.id, products)
+      return { ...m, products }
+    })
     scrollBottom()
   } catch (e) {
     console.error(e)
@@ -272,7 +364,7 @@ async function sendMsg() {
       session_id: currentSessionId.value,
       content: text,
       language: 'auto',
-    })
+    }, { timeout: 90000 })
     if (data?.session_title) {
       const sid = data.session_id || currentSessionId.value
       sessions.value = sessions.value.map((s) =>
@@ -294,19 +386,23 @@ async function sendMsg() {
     loading.value = false
 
     const full = data?.assistant_message?.content || data?.content || ''
+    const products = pickProducts(data)
+    const assistantId = data?.assistant_message?.id || `a-${Date.now()}`
     const assistant = {
       ...(data?.assistant_message || {
-        id: `a-${Date.now()}`,
         role: 'assistant',
         created_at: new Date().toISOString(),
         language: 'auto',
       }),
+      id: assistantId,
       content: '',
-      products: data?.products || [],
+      products,
       streaming: true,
     }
+    cacheMessageProducts(assistantId, products)
     messages.value.push(assistant)
-    await typewriterReveal(assistant, full)
+    // 商品卡先展示；正文通过响应式 patch 打字，避免图出来后字停住
+    await typewriterReveal(assistantId, full)
   } catch (e) {
     console.error(e)
     loading.value = false
@@ -480,6 +576,16 @@ onMounted(loadSessions)
   white-space: pre-wrap;
 }
 .msg-text { white-space: pre-wrap; }
+.msg-stream { min-height: 1.2em; }
+.msg-stream .caret {
+  display: inline-block;
+  margin-left: 1px;
+  color: #2f6f6a;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
 .msg-md :deep(p) { margin: 0 0 0.55em; line-height: 1.65; }
 .msg-md :deep(p:last-child) { margin-bottom: 0; }
 .msg-md :deep(ul), .msg-md :deep(ol) {

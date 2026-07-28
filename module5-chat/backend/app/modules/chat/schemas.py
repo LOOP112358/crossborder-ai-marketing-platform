@@ -33,6 +33,8 @@ class MessageOut(BaseModel):
     language: str
     created_at: datetime
     feedback: Optional[str] = None
+    # 必须始终出现在 JSON 中，刷新/切会话后前端才能还原商品卡片与缩略图
+    products: List[Dict[str, Any]] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -42,7 +44,7 @@ class MessageResponse(BaseModel):
     user_message: MessageOut
     assistant_message: MessageOut
     sources: List[str] = []
-    products: List[Dict[str, Any]] = []
+    products: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class ProductCard(BaseModel):

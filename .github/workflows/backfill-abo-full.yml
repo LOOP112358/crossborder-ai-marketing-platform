@@ -73,13 +73,43 @@ jobs:
             echo "[6] Skip full FAISS rebuild (too heavy); type/keyword search still works"
             free -h || true
 
-            echo "[7] Restart"
+            echo "[7] Restart (wait for uvicorn bind after heavy import startup)"
             systemctl start crossborder.service
-            sleep 4
-            systemctl is-active --quiet crossborder.service
+            sleep 2
+            if ! systemctl is-active --quiet crossborder.service; then
+              echo "Backend service failed to become active"
+              journalctl -u crossborder.service -n 80 --no-pager || true
+              exit 1
+            fi
             nginx -s reload || true
-            curl -fsS "http://127.0.0.1:8000/api/health"
-            echo
+
+            # Import leaves a large SQLite DB; FastAPI startup (init_db + counts) can
+            # take well over 4s before port 8000 accepts connections.
+            HEALTH_URL="http://127.0.0.1:8000/api/health"
+            ok=0
+            for i in $(seq 1 30); do
+              if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+                echo "Health OK (attempt $i/30)"
+                curl -fsS "$HEALTH_URL" || true
+                echo
+                ok=1
+                break
+              fi
+              if ! systemctl is-active --quiet crossborder.service; then
+                echo "Backend died while waiting for health (attempt $i/30)"
+                journalctl -u crossborder.service -n 80 --no-pager || true
+                exit 1
+              fi
+              echo "  waiting for :8000 ... ($i/30)"
+              sleep 3
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Health check failed after ~90s"
+              systemctl status crossborder.service --no-pager || true
+              journalctl -u crossborder.service -n 80 --no-pager || true
+              ss -lntp 2>/dev/null | grep -E ':8000\b' || true
+              exit 1
+            fi
 
             python - <<'PY'
             from app.core.database import SessionLocal, init_db

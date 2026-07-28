@@ -37,6 +37,7 @@ def _ensure_sqlite_columns():
     alters = [
         ("abo_products", "main_image_id", "VARCHAR(64)"),
         ("abo_products", "image_path", "VARCHAR(260)"),
+        ("chat_messages", "products_json", "TEXT"),
     ]
     with engine.begin() as conn:
         for table, col, coltype in alters:
