@@ -90,23 +90,18 @@ def search_products_by_type(db: Session, product_types: List[str], limit: int = 
     if not product_types:
         return []
     products: List[AboProduct] = []
-    # True/1 在前：有主图优先
-    has_img = (
-        AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
-    )
+    has_img = AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
     for pt in product_types:
-        rows = (
-            db.query(AboProduct)
-            .filter(
-                or_(
-                    AboProduct.product_type == pt,
-                    AboProduct.product_type.ilike(f"%{pt}%"),
-                )
+        base = db.query(AboProduct).filter(
+            or_(
+                AboProduct.product_type == pt,
+                AboProduct.product_type.ilike(f"%{pt}%"),
             )
-            .order_by(has_img.desc(), AboProduct.id.asc())
-            .limit(limit)
-            .all()
         )
+        # 有图够用时只返回有图商品，避免卡片混进空缩略图
+        rows = base.filter(has_img).order_by(AboProduct.id.asc()).limit(limit).all()
+        if not rows:
+            rows = base.order_by(AboProduct.id.asc()).limit(limit).all()
         for p in rows:
             if all(p.id != x.id for x in products):
                 products.append(p)
@@ -119,25 +114,20 @@ def search_products_by_keywords(db: Session, keywords: str, limit: int = 8) -> L
     tokens = [t for t in re.split(r"\s+", keywords.upper()) if len(t) >= 3]
     if not tokens:
         return []
-    has_img = (
-        AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
-    )
+    has_img = AboProduct.image_path.isnot(None) & (AboProduct.image_path != "")
     products: List[AboProduct] = []
     for tok in tokens[:6]:
-        rows = (
-            db.query(AboProduct)
-            .filter(
-                or_(
-                    AboProduct.product_type.ilike(f"%{tok}%"),
-                    AboProduct.item_name.ilike(f"%{tok}%"),
-                    AboProduct.brand.ilike(f"%{tok}%"),
-                    AboProduct.faq_text.ilike(f"%{tok}%"),
-                )
+        base = db.query(AboProduct).filter(
+            or_(
+                AboProduct.product_type.ilike(f"%{tok}%"),
+                AboProduct.item_name.ilike(f"%{tok}%"),
+                AboProduct.brand.ilike(f"%{tok}%"),
+                AboProduct.faq_text.ilike(f"%{tok}%"),
             )
-            .order_by(has_img.desc(), AboProduct.id.asc())
-            .limit(limit)
-            .all()
         )
+        rows = base.filter(has_img).order_by(AboProduct.id.asc()).limit(limit).all()
+        if not rows:
+            rows = base.order_by(AboProduct.id.asc()).limit(limit).all()
         for p in rows:
             if all(p.id != x.id for x in products):
                 products.append(p)
