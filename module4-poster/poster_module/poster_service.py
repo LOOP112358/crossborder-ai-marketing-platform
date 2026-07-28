@@ -517,13 +517,23 @@ def fit_wrapped_text(draw, text: str, font_name: str, prefer_size: int, max_widt
 def text_safe_zone(canvas_w: int, canvas_h: int, template_config: dict) -> dict:
     overlays = template_config.get("overlays") or []
     layout = template_config.get("layout_mode") or "stack"
-    pad = int(min(canvas_w, canvas_h) * 0.06)
+    pad = int(min(canvas_w, canvas_h) * 0.055)
+    cta_h = 86
+    defaults = template_config.get("text_defaults") or {}
+    cta_def = defaults.get("cta_text") or {}
+    cta_def_x = cta_def.get("x")
+    # 模板若把 CTA 放在右半区，视为侧栏按钮：文案走左，按钮走右
+    cta_side = isinstance(cta_def_x, (int, float)) and float(cta_def_x) >= canvas_w * 0.52
+
     zone = {
         "x": pad,
         "y": pad,
-        "w": int(canvas_w * 0.52),
+        "w": int(canvas_w * (0.52 if cta_side else 0.58)),
         "h": int(canvas_h * 0.42),
-        "cta_y": canvas_h - pad - 90,
+        "cta_y": canvas_h - pad - cta_h,
+        "content_max_y": canvas_h - pad - (20 if cta_side else cta_h + 16),
+        "cta_side": cta_side,
+        "cta_x": int(cta_def_x) if cta_side else pad,
         "align": "left",
         "on_panel": False,
         "panel_light": False,
@@ -537,70 +547,110 @@ def text_safe_zone(canvas_w: int, canvas_h: int, template_config: dict) -> dict:
         lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) if rgb else 128
         if kind in ("left_panel", "left_fade", "soft_card"):
             ratio = float(ov.get("ratio", 0.42))
+            cta_y = canvas_h - pad - cta_h
             zone.update({
                 "x": pad,
                 "y": int(canvas_h * 0.08),
                 "w": int(canvas_w * ratio) - pad * 2,
                 "h": int(canvas_h * 0.72),
-                "cta_y": canvas_h - pad - 100,
+                "cta_y": cta_y,
+                "content_max_y": cta_y - 16,
                 "on_panel": True,
                 "panel_light": lum > 150 or kind in ("left_fade", "soft_card"),
             })
         elif kind in ("top_band", "top_fade"):
             ratio = float(ov.get("ratio", 0.28))
+            band_bottom = int(canvas_h * ratio)
+            cta_y = max(pad + 48, band_bottom - pad - 72)
             zone.update({
                 "x": pad,
                 "y": int(pad * 0.7),
                 "w": canvas_w - pad * 2,
-                "h": int(canvas_h * ratio) - pad,
-                "cta_y": int(canvas_h * ratio) - pad - 70,
+                "h": max(80, band_bottom - pad),
+                "cta_y": cta_y,
+                "content_max_y": cta_y - 14,
                 "on_panel": True,
                 "panel_light": lum > 160 and alpha >= 140,
             })
         elif kind in ("bottom_band", "bottom_fade"):
-            ratio = float(ov.get("ratio", 0.28))
+            ratio = max(0.30, float(ov.get("ratio", 0.28)))
             band_h = int(canvas_h * ratio)
+            cta_y = canvas_h - pad - cta_h
             zone.update({
                 "x": pad,
-                "y": canvas_h - band_h + int(pad * 0.7),
+                "y": canvas_h - band_h + int(pad * 0.45),
                 "w": canvas_w - pad * 2,
                 "h": band_h - pad,
-                "cta_y": canvas_h - pad - 80,
+                "cta_y": cta_y,
+                "content_max_y": cta_y - 16,
                 "on_panel": True,
                 "panel_light": lum > 160 and alpha >= 140,
             })
     purpose = str(template_config.get("purpose") or "")
     if "白底" in purpose or "Amazon" in purpose:
-        zone.update({
-            "x": pad,
-            "y": int(canvas_h * 0.78),
-            "w": int(canvas_w * 0.62),
-            "h": int(canvas_h * 0.18),
-            "cta_y": int(canvas_h * 0.86),
-            "on_panel": True,
-            "panel_light": True,
-        })
+        if cta_side:
+            zone.update({
+                "x": pad,
+                "y": int(canvas_h * 0.76),
+                "w": max(200, min(int(canvas_w * 0.55), int(cta_def_x) - pad - 24)),
+                "h": int(canvas_h * 0.22),
+                "cta_y": int(cta_def.get("y") or (canvas_h * 0.86)),
+                "content_max_y": canvas_h - pad - 12,
+                "cta_side": True,
+                "cta_x": int(cta_def_x),
+                "on_panel": True,
+                "panel_light": True,
+            })
+        else:
+            cta_y = canvas_h - pad - cta_h
+            zone.update({
+                "x": pad,
+                "y": int(canvas_h * 0.74),
+                "w": int(canvas_w * 0.70),
+                "h": int(canvas_h * 0.24),
+                "cta_y": cta_y,
+                "content_max_y": cta_y - 16,
+                "on_panel": True,
+                "panel_light": True,
+            })
     if layout == "lifestyle":
+        cta_y = canvas_h - pad - cta_h
         zone.update({
             "x": pad,
             "y": int(canvas_h * 0.07),
             "w": int(canvas_w * 0.56),
             "h": int(canvas_h * 0.62),
-            "cta_y": canvas_h - pad - 88,
+            "cta_y": cta_y,
+            "content_max_y": cta_y - 16,
             "panel_light": True,
         })
     elif layout == "premium_dark":
+        cta_y = canvas_h - pad - 72
         zone.update({
             "x": pad,
             "y": int(canvas_h * 0.06),
             "w": canvas_w - pad * 2,
             "h": int(canvas_h * 0.28),
-            "cta_y": canvas_h - pad - 70,
+            "cta_y": cta_y,
+            "content_max_y": cta_y - 14,
             "panel_light": False,
         })
-    zone["w"] = max(160, zone["w"])
-    zone["h"] = max(80, zone["h"])
+    zone["w"] = max(160, int(zone["w"]))
+    zone["h"] = max(80, int(zone["h"]))
+    zone["content_max_y"] = max(zone["y"] + 48, int(zone.get("content_max_y") or (zone["cta_y"] - 16)))
+    if zone.get("cta_side"):
+        zone["content_max_y"] = max(zone["content_max_y"], canvas_h - pad - 12)
     return zone
+
+
+def estimate_cta_button_size(draw, text: str, font) -> tuple:
+    if not text:
+        return 120, 56
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = text_bbox[2] - text_bbox[0]
+    text_h = text_bbox[3] - text_bbox[1]
+    return text_w + 68, text_h + 36
+
 
 
 def region_luminance(image: Image.Image, x: int, y: int, w: int, h: int) -> float:
@@ -902,6 +952,7 @@ def compose_poster(
     zone = text_safe_zone(canvas_w, canvas_h, config) if auto_layout else None
     cursor_y = zone["y"] if zone else None
     max_w = zone["w"] if zone else int(canvas_w * 0.48)
+    content_max_y = zone["content_max_y"] if zone else (canvas_h - 120)
     if zone and zone.get("panel_light") and not style_options.get("force_stroke"):
         stroke_enabled = False
 
@@ -915,19 +966,21 @@ def compose_poster(
     chips_drawn = False
 
     def _draw_chips_at(y_pos: int) -> int:
+        if y_pos >= content_max_y - 20:
+            return y_pos
         chip_font = load_font(22, "msyh")
         border = "#FFFFFF" if layout_mode == "premium_dark" else "#2A343A"
         tcol = "#FFFFFF" if layout_mode == "premium_dark" else "#2A343A"
         fill = (255, 255, 255, 36) if layout_mode == "premium_dark" else (255, 255, 255, 90)
-        # 长卖点先缩小字号再画，尽量完整
         fitted = []
         for t in chip_texts:
-            f, _, _ = fit_wrapped_text(draw, t, "msyh", 22, max_w - 28, max_lines=3, min_size=16)
+            fit_wrapped_text(draw, t, "msyh", 22, max_w - 28, max_lines=2, min_size=16)
             fitted.append(t)
-        return draw_feature_chips(
+        next_y = draw_feature_chips(
             draw, fitted, zone["x"] if zone else 60, y_pos, chip_font, max_w,
             text_color=tcol, border_color=border, fill_color=fill,
         )
+        return min(next_y, content_max_y)
 
     for layer in text_layers:
         text = layer.get("text", "")
@@ -947,8 +1000,27 @@ def compose_poster(
         art_style = layer.get("art_style") or default_cfg.get("art_style", "normal")
 
         if auto_layout and not manual_xy and zone is not None:
-            x = zone["x"]
-            y = zone["cta_y"] if key == "cta_text" else (cursor_y if cursor_y is not None else y)
+            if key == "cta_text" and zone.get("cta_side"):
+                x = int(zone.get("cta_x") or (canvas_w * 0.62))
+                # 侧栏按钮与标题行对齐，绝不用「文案块中点」（会盖住副标题/卖点）
+                y = int(zone.get("cta_y") or zone["y"])
+                y = min(max(zone["y"], y), canvas_h - 90)
+            elif key == "cta_text":
+                x = zone["x"]
+                bw, bh = 160, 64
+                try:
+                    tmp_font = load_font(font_size, font_name)
+                    bw, bh = estimate_cta_button_size(draw, text, tmp_font)
+                except Exception:
+                    pass
+                base_cta = zone["cta_y"]
+                y = max(base_cta, (cursor_y or base_cta) + 12)
+                y = min(y, canvas_h - bh - 16)
+            else:
+                x = zone["x"]
+                y = cursor_y if cursor_y is not None else y
+                if cursor_y is not None and cursor_y >= content_max_y - 18:
+                    continue
 
         if zone and zone.get("panel_light") and art_style in ("stroke_shadow", "glow", "strong"):
             art_style = "normal" if key != "title" else "shadow"
@@ -967,19 +1039,43 @@ def compose_poster(
 
         font = load_font(font_size, font_name)
         if auto_layout and key != "cta_text":
+            # 按剩余高度收紧行数，避免撞上 CTA
+            remain = max(24, content_max_y - (cursor_y or y))
             max_lines = 3 if key == "title" else 2
+            if remain < font_size * 2.4:
+                max_lines = 1
+            elif remain < font_size * 3.6 and max_lines > 2:
+                max_lines = 2
             font, font_size, _ = fit_wrapped_text(
-                draw, text, font_name, font_size, max_w, max_lines=max_lines, min_size=18,
+                draw, text, font_name, font_size, max_w, max_lines=max_lines, min_size=16,
             )
 
         if key == "cta_text":
-            if chip_texts and not chips_drawn and cursor_y is not None:
-                cursor_y = _draw_chips_at(cursor_y)
+            if chip_texts and not chips_drawn and cursor_y is not None and not (zone and zone.get("cta_side")):
+                cursor_y = _draw_chips_at(min(cursor_y, content_max_y - 40))
                 chips_drawn = True
+                if auto_layout and not manual_xy and zone is not None:
+                    bw, bh = estimate_cta_button_size(draw, text, font)
+                    y = max(zone["cta_y"], cursor_y + 12)
+                    y = min(y, canvas_h - bh - 16)
+            # 底部 CTA：始终画在全部文案之下
+            if zone and not zone.get("cta_side") and cursor_y is not None:
+                bw, bh = estimate_cta_button_size(draw, text, font)
+                if auto_layout and not manual_xy:
+                    y = max(int(zone.get("cta_y") or 0), cursor_y + 14)
+                    y = min(y, canvas_h - bh - 16)
+                elif y < cursor_y + 8:
+                    y = min(cursor_y + 14, canvas_h - bh - 16)
+            # 侧栏 CTA：保证在文案列右侧，并与标题行对齐（避免盖住副标题）
+            if zone and zone.get("cta_side"):
+                bw, bh = estimate_cta_button_size(draw, text, font)
+                min_x = int(zone["x"] + max_w + 20)
+                if x < min_x:
+                    x = min(min_x, canvas_w - bw - 24)
+                y = min(max(int(zone.get("cta_y") or zone["y"]), zone["y"]), canvas_h - bh - 16)
             button_color = layer.get("button_color") or default_cfg.get("button_color", "#111111")
             draw_cta_button(
-                draw=draw, text=text, x=x,
-                y=(zone["cta_y"] if (auto_layout and zone and not manual_xy) else y),
+                draw=draw, text=text, x=x, y=y,
                 font=font, text_color=color, button_color=button_color, art_style=art_style,
             )
         elif key == "subtitle" and layout_mode == "lifestyle" and config.get("subtitle_as_pill"):
@@ -990,15 +1086,18 @@ def compose_poster(
                 max_width=max_w,
             )
             if auto_layout and not manual_xy and cursor_y is not None:
-                cursor_y = next_y
+                cursor_y = min(next_y, content_max_y)
                 if chip_texts and not chips_drawn:
                     cursor_y = _draw_chips_at(cursor_y)
                     chips_drawn = True
         else:
             max_lines = 3 if key == "title" else 2
             if auto_layout:
+                remain = max(24, content_max_y - y)
+                if remain < font_size * 2.2:
+                    max_lines = 1
                 font, font_size, lines = fit_wrapped_text(
-                    draw, text, font_name, font_size, max_w, max_lines=max_lines, min_size=18,
+                    draw, text, font_name, font_size, max_w, max_lines=max_lines, min_size=16,
                 )
             else:
                 lines = [ellipsize_to_width(draw, text, font, max_w)]
@@ -1010,13 +1109,13 @@ def compose_poster(
                 draw_accent_line(draw, x, next_y - 4, min(120, max_w // 3), accent)
                 next_y += 14
             if auto_layout and not manual_xy and cursor_y is not None:
-                cursor_y = next_y + (22 if key == "title" else 16)
+                cursor_y = min(next_y + (18 if key == "title" else 12), content_max_y)
                 if key == "subtitle" and chip_texts and not chips_drawn:
                     cursor_y = _draw_chips_at(cursor_y)
                     chips_drawn = True
 
     if chip_texts and not chips_drawn and cursor_y is not None:
-        _draw_chips_at(cursor_y)
+        _draw_chips_at(min(cursor_y, content_max_y - 40))
 
     filename = f"poster_{uuid.uuid4().hex}.png"
     save_path = POSTER_DIR / filename

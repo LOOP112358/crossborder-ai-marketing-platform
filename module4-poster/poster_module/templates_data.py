@@ -49,16 +49,30 @@ TEMPLATES = [
     },
     {
         "id": 5,
-        "name": "折扣突出模板",
+        "name": "大促爆款 · 折扣突出",
         "preview_url": "/static/templates/template_5.png",
         "config": {
+            "purpose": "大促/折扣",
+            "layout_mode": "stack",
             "canvas": {"width": 1080, "height": 1080},
-            "product": {"x": 300, "y": 360, "w": 500, "h": 500},
-            "title": {"x": 80, "y": 80, "font_size": 58, "color": "#FFFFFF"},
-            "discount": {"x": 80, "y": 720, "font_size": 92, "color": "#FFDD00"},
-            "price": {"x": 80, "y": 850, "font_size": 60, "color": "#FFFFFF"}
-        }
-    }
+            "overlays": [
+                {"type": "bottom_fade", "ratio": 0.40, "color": [180, 40, 40, 180]},
+                {"type": "vignette"},
+            ],
+            "product_shadow": True,
+            "product": {"x": 260, "y": 140, "w": 560, "h": 560},
+            "text_defaults": {
+                "title": {"x": 70, "y": 740, "font_size": 40, "color": "#FFFFFF", "art_style": "shadow"},
+                "subtitle": {"x": 70, "y": 800, "font_size": 42, "color": "#FFE566", "art_style": "shadow"},
+                "selling_point_1": {"x": 70, "y": 860, "font_size": 26, "color": "#FFFFFF", "art_style": "shadow"},
+                "selling_point_2": {"x": 70, "y": 900, "font_size": 26, "color": "#FFFFFF", "art_style": "shadow"},
+                "cta_text": {
+                    "x": 70, "y": 980, "font_size": 30,
+                    "color": "#B02828", "button_color": "#FFFFFF", "art_style": "normal",
+                },
+            },
+        },
+    },
 ]
 
 
