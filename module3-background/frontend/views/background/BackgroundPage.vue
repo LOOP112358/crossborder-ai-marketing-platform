@@ -71,7 +71,7 @@
                 :rows="2"
                 maxlength="200"
                 show-word-limit
-                placeholder="例如：留出地面空间放咖啡桌；不要出现其他家具"
+                placeholder="例如：地面留白；展台保持空；不要出现任何商品"
               />
             </el-form-item>
 
@@ -122,7 +122,7 @@ const options = reactive({
 
 const form = reactive({
   category: '',
-  style: 'warm',
+  style: 'default',
   color_hint: '',
   scene_preset: '',
   lighting: '',

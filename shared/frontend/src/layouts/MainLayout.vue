@@ -103,6 +103,9 @@ const activeMenu = computed(() => {
   if (['/matte', '/background', '/poster', '/poster-workflow'].includes(route.path)) {
     return '/poster-workflow'
   }
+  if (route.path === '/writing-poster') {
+    return '/catalog'
+  }
   return route.path
 })
 
@@ -111,6 +114,7 @@ const currentPageTitle = computed(() => {
     '/home': 'nav.home',
     '/catalog': 'nav.catalog',
     '/writing': 'nav.writing',
+    '/writing-poster': '文案·海报工作流',
     '/poster-workflow': 'AI海报工作流',
     '/my-works': '我的作品',
     '/poster-history': '我的作品',

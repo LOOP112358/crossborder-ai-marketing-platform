@@ -5,17 +5,17 @@
         <p class="eyebrow">越境智绘 · Cross-border AI</p>
         <h1 class="sketch-title">跨境AI营销系统</h1>
         <p class="lead">
-          以智能串联跨境经营：文案、海报工作流、客服与看板，一站式完成从种草到运营。
+          智能选品后可连贯进入文案与海报；文案生成、AI海报工作流、客服与看板亦可独立使用。
         </p>
         <div class="actions">
           <el-button class="sketch-btn sketch-btn-primary" size="large" @click="$router.push('/catalog')">
             打开选品中心
           </el-button>
           <el-button class="sketch-btn" size="large" @click="$router.push('/writing')">
-            先写一段文案
+            文案生成
           </el-button>
           <el-button class="sketch-btn" size="large" @click="$router.push('/poster-workflow')">
-            进入海报工作流
+            AI海报工作流
           </el-button>
         </div>
       </div>
@@ -72,10 +72,10 @@ const modules = computed(() => [
   },
   {
     name: 'AI海报工作流',
-    desc: '抠图识别 → 背景生成 → 海报合成，三步整合',
+    desc: '抠图 → 背景生成 → 海报合成；选品后也可从选品中心进入「文案·海报」连贯流程',
     path: '/poster-workflow',
     icon: '▣',
-    owner: '成员2/3/4',
+    owner: '成员2–4',
     status: t('home.done'),
     ready: true,
   },

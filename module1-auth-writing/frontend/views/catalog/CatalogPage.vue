@@ -5,7 +5,7 @@
         <p class="eyebrow">Merchant · ABO Catalog</p>
         <h1 class="sketch-title">智能选品中心</h1>
         <p class="lead">
-          从亚马逊开源 ABO 库检索真实货盘，选定后一键进入文案或海报。活动模式可按主题打分推荐。
+          从亚马逊开源 ABO 库检索真实货盘；选定后进入「文案 · 海报」工作流（文案与海报均可跳过）。独立模块仍可单独使用。
         </p>
         <div class="stat-row">
           <div class="stat">
@@ -150,16 +150,6 @@
               <ul v-if="p.feature_list?.length" class="feats">
                 <li v-for="(f, i) in p.feature_list.slice(0, 2)" :key="i">{{ f }}</li>
               </ul>
-              <div class="card-actions" @click.stop>
-                <el-button size="small" class="sketch-btn" @click="selectProduct(p); goWriting()">写文案</el-button>
-                <el-button
-                  size="small"
-                  type="primary"
-                  class="sketch-btn sketch-btn-primary"
-                  :loading="preparingPoster && selected?.id === p.id"
-                  @click="selectProduct(p); goPoster()"
-                >做海报</el-button>
-              </div>
             </div>
           </article>
         </div>
@@ -326,17 +316,6 @@
               <span>{{ rec.language }}</span>
               <span v-for="p in rec.platforms.slice(0, 2)" :key="p">{{ p }}</span>
             </div>
-            <div class="card-actions" @click.stop>
-              <el-button size="small" class="sketch-btn" @click="selectCampaignItem(rec)">选中</el-button>
-              <el-button size="small" class="sketch-btn" @click="goCampaignWriting(rec)">写文案</el-button>
-              <el-button
-                size="small"
-                type="primary"
-                class="sketch-btn sketch-btn-primary"
-                :loading="preparingPoster && selected?.id === rec.product.id"
-                @click="goCampaignPoster(rec)"
-              >做海报</el-button>
-            </div>
           </article>
         </div>
       </section>
@@ -355,10 +334,11 @@
           <span>{{ selected.brand || '未知名牌' }} · {{ selected.category }}</span>
         </div>
         <div class="select-bar-actions">
-          <el-button class="sketch-btn sketch-btn-primary" @click="goWriting">写文案</el-button>
-          <el-button class="sketch-btn" type="primary" plain @click="goPoster" :loading="preparingPoster">
-            做海报
+          <el-button class="sketch-btn sketch-btn-primary" type="primary" @click="goWorkflow" :loading="preparingPoster">
+            进入文案·海报工作流
           </el-button>
+          <el-button class="sketch-btn" @click="goWriting">仅写文案</el-button>
+          <el-button class="sketch-btn" plain @click="goPoster" :loading="preparingPoster">仅做海报</el-button>
           <el-button text type="info" @click="clearSelected">清除</el-button>
         </div>
       </div>
@@ -468,6 +448,7 @@ function remember(p) {
 function selectProduct(p) {
   selected.value = p
   appStore.setSelectedProduct(p)
+  appStore.setCampaignHint(null)
   remember(p)
 }
 
@@ -525,6 +506,38 @@ function goWriting() {
   router.push('/writing')
 }
 
+/** 选品后进入：文案（可跳过）→ 海报生成（可跳过） */
+async function goWorkflow() {
+  if (!selected.value) {
+    ElMessage.warning('请先选择一件商品')
+    return
+  }
+  preparingPoster.value = true
+  try {
+    const hint = appStore.campaignHint
+    const lang = hint?.language === 'zh' || !hint?.language ? 'zh' : hint.language
+    const data = await getPosterCopy(selected.value.id, lang === 'zh' ? 'zh' : 'en', false)
+    const base = data.poster_copy || null
+    const copy = hint
+      ? {
+          ...(base || {}),
+          title: hint.poster_hook || base?.title,
+          cta_text: hint.cta || base?.cta_text,
+          subtitle: hint.angle || base?.subtitle,
+        }
+      : base
+    appStore.setSelectedProduct(data.product || selected.value, copy)
+  } catch {
+    appStore.setSelectedProduct(selected.value)
+  } finally {
+    preparingPoster.value = false
+  }
+  sessionStorage.removeItem('workflow_writing_done')
+  sessionStorage.removeItem('workflow_writing_result')
+  ElMessage.success('已选品，进入文案·海报工作流')
+  router.push({ path: '/writing-poster' })
+}
+
 async function goPoster() {
   if (!selected.value) {
     ElMessage.warning('请先选择一件商品')
@@ -532,13 +545,30 @@ async function goPoster() {
   }
   preparingPoster.value = true
   try {
-    const data = await getPosterCopy(selected.value.id, 'zh', false)
-    appStore.setSelectedProduct(data.product || selected.value, data.poster_copy || null)
-    ElMessage.success('已带入商品图与海报文案')
-    router.push({ path: '/poster-workflow', query: { step: '0' } })
+    const hint = appStore.campaignHint
+    const lang = hint?.language === 'zh' || !hint?.language ? 'zh' : hint.language
+    const data = await getPosterCopy(selected.value.id, lang === 'zh' ? 'zh' : 'en', false)
+    const base = data.poster_copy || null
+    const copy = hint
+      ? {
+          ...(base || {}),
+          title: hint.poster_hook || base?.title,
+          cta_text: hint.cta || base?.cta_text,
+          subtitle: hint.angle || base?.subtitle,
+        }
+      : base
+    appStore.setSelectedProduct(data.product || selected.value, copy)
+    ElMessage.success(hint ? '已按活动方案带入，跳过文案直达海报' : '已带入商品，跳过文案直达海报')
+    router.push({ path: '/writing-poster', query: { skipWriting: '1' } })
   } catch {
-    appStore.setSelectedProduct(selected.value)
-    router.push({ path: '/poster-workflow', query: { step: '0' } })
+    const hint = appStore.campaignHint
+    appStore.setSelectedProduct(
+      selected.value,
+      hint
+        ? { title: hint.poster_hook, subtitle: hint.angle, cta_text: hint.cta }
+        : null,
+    )
+    router.push({ path: '/writing-poster', query: { skipWriting: '1' } })
   } finally {
     preparingPoster.value = false
   }
@@ -597,38 +627,6 @@ function applyCampaignHint(rec) {
 function selectCampaignItem(rec) {
   selectProduct(rec.product)
   applyCampaignHint(rec)
-}
-
-function goCampaignWriting(rec) {
-  selectCampaignItem(rec)
-  router.push('/writing')
-}
-
-async function goCampaignPoster(rec) {
-  selectCampaignItem(rec)
-  preparingPoster.value = true
-  try {
-    const lang = rec.language === 'zh' ? 'zh' : 'en'
-    const data = await getPosterCopy(rec.product.id, lang, false)
-    const copy = {
-      ...(data.poster_copy || {}),
-      title: rec.poster_hook || data.poster_copy?.title,
-      cta_text: rec.cta || data.poster_copy?.cta_text,
-      subtitle: rec.angle || data.poster_copy?.subtitle,
-    }
-    appStore.setSelectedProduct(data.product || rec.product, copy)
-    ElMessage.success('已按活动方案带入海报文案')
-    router.push({ path: '/poster-workflow', query: { step: '0' } })
-  } catch {
-    appStore.setSelectedProduct(rec.product, {
-      title: rec.poster_hook,
-      subtitle: rec.angle,
-      cta_text: rec.cta,
-    })
-    router.push({ path: '/poster-workflow', query: { step: '0' } })
-  } finally {
-    preparingPoster.value = false
-  }
 }
 
 async function runCampaign() {
@@ -1106,17 +1104,6 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rec .card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
-  width: 100%;
-}
-.rec .card-actions :deep(.el-button) {
-  margin: 0;
-}
 
 .toolbar {
   padding: 14px 16px;
@@ -1338,14 +1325,6 @@ onMounted(async () => {
   overflow: hidden;
 }
 .feats li { margin: 0; }
-.card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 10px;
-  width: 100%;
-}
 
 .select-bar {
   position: fixed;

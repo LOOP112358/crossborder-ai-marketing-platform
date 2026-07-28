@@ -3,24 +3,37 @@
     <div class="workflow-head sketch-card">
       <div>
         <h1>AI 海报工作流</h1>
-        <p>从 ABO 商品库选品（图文一体）→ 背景生成 → 海报合成。选品后会自动带出官方图与海报文案。</p>
+        <p>商品抠图 → 背景生成 → 海报合成。中间结果自动带入下一步。</p>
       </div>
-      <el-button text type="primary" @click="step = Math.min(2, step + 1)" v-if="step < 2">下一步</el-button>
+      <div class="head-actions">
+        <el-button text type="primary" @click="$router.push('/catalog')">去选品中心</el-button>
+        <el-button text type="success" @click="$router.push('/my-works?tab=poster')">我的作品</el-button>
+      </div>
     </div>
 
     <el-steps :active="step" finish-status="success" align-center class="workflow-steps">
-      <el-step title="商品选品/抠图" description="库内商品 或 上传抠图" @click="step = 0" />
-      <el-step title="背景生成" description="按品类生成场景并超分" @click="step = 1" />
-      <el-step title="海报合成" description="自动文案 + 模板合成" @click="step = 2" />
+      <el-step title="商品抠图" description="去背景 / 识别" @click="jumpTo(0)" />
+      <el-step title="背景生成" description="场景图 / 超分" @click="jumpTo(1)" />
+      <el-step title="海报合成" description="模板 + 文案" @click="jumpTo(2)" />
     </el-steps>
+
+    <div class="context-bar" v-if="productLabel">
+      <el-tag type="success" effect="plain">当前商品：{{ productLabel }}</el-tag>
+      <el-tag v-if="appStore.mattedUrl?.includes('/static/matte/')" type="success" effect="plain">已抠图</el-tag>
+      <el-tag
+        v-if="appStore.preferredBgUrl || appStore.enhancedBgUrl || appStore.seedreamBgUrl"
+        type="success"
+        effect="plain"
+      >已有背景</el-tag>
+    </div>
 
     <div class="workflow-body">
       <div class="step-nav">
         <el-button :disabled="step === 0" @click="step -= 1">上一步</el-button>
-        <el-tag v-if="appStore.mattedUrl" type="success" effect="plain">已有抠图</el-tag>
-        <el-tag v-if="appStore.category" type="info" effect="plain">类别：{{ appStore.category }}</el-tag>
-        <el-tag v-if="appStore.preferredBgUrl || appStore.enhancedBgUrl || appStore.seedreamBgUrl" type="success" effect="plain">已有背景</el-tag>
-        <el-button type="primary" :disabled="step === 2" @click="goNext">下一步</el-button>
+        <el-button v-if="step < 2" type="primary" @click="goNext">
+          {{ step === 0 ? '下一步：背景生成' : '下一步：海报合成' }}
+        </el-button>
+        <el-button v-else type="success" @click="$router.push('/my-works?tab=poster')">完成并查看作品</el-button>
       </div>
 
       <MattePage v-show="step === 0" />
@@ -31,7 +44,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '@/store/useAppStore'
@@ -39,26 +52,64 @@ import MattePage from '@m2/views/matte/MattePage.vue'
 import BackgroundPage from '@m3/views/background/BackgroundPage.vue'
 import PosterPage from '@m4/views/poster/PosterPage.vue'
 
+const STEP_ALIAS = {
+  matte: 0, background: 1, bg: 1, poster: 2,
+  0: 0, 1: 1, 2: 2,
+}
+
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
-const step = ref(Number(route.query.step || 0))
 
-watch(step, (v) => {
-  router.replace({ path: '/poster-workflow', query: { step: String(v) } })
+function parseStep(raw) {
+  if (raw == null || raw === '') return 0
+  if (STEP_ALIAS[raw] != null) return STEP_ALIAS[raw]
+  const n = Number(raw)
+  return Number.isFinite(n) ? Math.min(2, Math.max(0, n)) : 0
+}
+
+const step = ref(parseStep(route.query.step))
+
+const productLabel = computed(() => {
+  const p = appStore.selectedProduct
+  if (!p) return ''
+  return [p.brand, p.name || p.item_name].filter(Boolean).join(' · ').slice(0, 64)
 })
 
-function goNext() {
-  if (step.value === 0) {
+watch(step, (v) => {
+  router.replace({ path: '/poster-workflow', query: { ...route.query, step: String(v) } })
+})
+
+watch(
+  () => route.query.step,
+  (v) => {
+    const next = parseStep(v)
+    if (next !== step.value) step.value = next
+  },
+)
+
+function jumpTo(i) {
+  if (i > step.value + 1) {
+    ElMessage.info('请按步骤推进')
+    return
+  }
+  if (i > step.value && !validateBeforeLeave(step.value)) return
+  step.value = i
+}
+
+function validateBeforeLeave(from) {
+  if (from === 0) {
     const m = appStore.mattedUrl || ''
     if (!m.includes('/static/matte/')) {
-      ElMessage.warning('请先完成第1步抠图（不要直接用库内白底原图）')
-      return
+      ElMessage.warning('请先完成抠图（海报需要透明商品图）')
+      return false
     }
   }
-  if (step.value === 1 && !(appStore.preferredBgUrl || appStore.enhancedBgUrl || appStore.seedreamBgUrl)) {
-    ElMessage.warning('建议先生成背景，再进入海报合成')
-  }
+  return true
+}
+
+function goNext() {
+  if (!validateBeforeLeave(step.value)) return
   if (step.value < 2) step.value += 1
 }
 </script>
@@ -71,6 +122,7 @@ function goNext() {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .workflow-head h1 {
   margin: 0 0 6px;
@@ -82,13 +134,15 @@ function goNext() {
   margin: 0;
   color: var(--ink-soft, #666);
   font-size: 14px;
+  max-width: 560px;
 }
-.workflow-steps {
-  padding: 8px 0 4px;
-  cursor: pointer;
-}
-.workflow-body {
-  background: transparent;
+.head-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.workflow-steps { padding: 8px 0 4px; cursor: pointer; }
+.context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 .step-nav {
   display: flex;

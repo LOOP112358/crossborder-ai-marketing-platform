@@ -11,22 +11,25 @@ from PIL import Image
 
 def _scene_hint(category: str, product_name: str = "", brand: str = "", product_type: str = "") -> str:
     blob = f"{category} {product_name} {brand} {product_type}".lower()
-    if any(k in blob for k in ("tablet", "kindle", "sleeve", "case", "phone", "protective", "ipad")):
+    if any(k in blob for k in ("tablet", "kindle", "sleeve", "case", "phone", "protective", "ipad", "数码", "保护套")):
         return (
-            "modern desk or lifestyle shelf for electronics accessories, "
-            "soft daylight, wood or matte desk surface, shallow depth of field"
+            "empty modern desk surface and soft lifestyle shelf, soft daylight, "
+            "wood or matte desk plane only, shallow depth of field, nothing resting on the desk"
         )
-    if any(k in blob for k in ("headphone", "earbud", "earphone")):
-        return "clean desk with soft audio lifestyle mood, no devices shown"
-    if any(k in blob for k in ("shoe", "sneaker")):
-        return "minimal footwear pedestal, concrete or soft fabric ground, fashion studio"
-    if any(k in blob for k in ("sofa", "chair", "table", "furniture")):
-        return "bright Scandinavian home interior corner, empty floor or table surface for placement"
-    if any(k in blob for k in ("watch", "jewelry")):
-        return "luxury jewelry display surface, soft dark gradient, premium lighting"
+    if any(k in blob for k in ("headphone", "earbud", "earphone", "耳机")):
+        return "empty clean desk with soft audio lifestyle mood, blank surface, no devices"
+    if any(k in blob for k in ("shoe", "sneaker", "boot", "sandal", "footwear", "鞋", "靴")):
+        return (
+            "empty fashion photography studio with soft seamless backdrop and clean floor plane, "
+            "optional empty low pedestal with nothing on it, space reserved for a product overlay later"
+        )
+    if any(k in blob for k in ("sofa", "chair", "table", "furniture", "沙发", "桌", "椅")):
+        return "bright Scandinavian home interior corner with empty floor or empty table surface for placement"
+    if any(k in blob for k in ("watch", "jewelry", "手表", "珠宝")):
+        return "empty luxury display surface with soft dark gradient and premium lighting, nothing on the surface"
     if category:
-        return f"e-commerce scene suitable for {category} product placement"
-    return "premium empty e-commerce product display environment"
+        return f"empty e-commerce photography environment suitable for {category} ads, clear center stage, no merchandise"
+    return "premium empty e-commerce product display environment, blank central stage"
 
 
 def _style_label(style: str) -> str:
@@ -38,9 +41,17 @@ def _style_label(style: str) -> str:
         "warm": "warm cozy home atmosphere",
         "scandi": "Scandinavian bright home",
         "industrial": "industrial loft concrete texture",
-        "default": "modern commercial",
+        "default": "clean modern commercial photography",
     }
-    return mapping.get((style or "").strip().lower(), style or "modern commercial")
+    return mapping.get((style or "").strip().lower(), style or "clean modern commercial photography")
+
+
+_NEGATIVE_SUBJECTS = (
+    "no product, no merchandise, no shoes, no sneakers, no boots, no sandals, no footwear, "
+    "no clothing, no bags, no electronics, no phone, no tablet, no headphones, no watch, "
+    "no jewelry, no packaging, no box, no bottle, no mannequin, no person, no hands, "
+    "no animal, no logo, no watermark, no text, no brand mark, no floating object on the pedestal"
+)
 
 
 def build_prompt(
@@ -57,13 +68,12 @@ def build_prompt(
     extra_note: str = "",
 ):
     scene = scene_preset.strip() or _scene_hint(category, product_name, brand, product_type)
-    product_line = ""
-    if product_name or brand or product_type:
-        product_line = (
-            "The background should match this product context, but do not draw the product itself: "
-            f"name={product_name or 'n/a'}, brand={brand or 'n/a'}, "
-            f"type={product_type or category or 'n/a'}. "
-        )
+    # 只用品类/类型做氛围，不写具体商品名——写全名容易让模型画出主体
+    vibe = (product_type or category or "").strip() or "general merchandise"
+    product_line = (
+        f"This is a BACKGROUND-ONLY plate for a later {vibe} composite. "
+        "The scene must stay empty: do not invent or draw any sellable item. "
+    )
     extras = []
     if lighting:
         extras.append(f"Lighting: {lighting}.")
@@ -75,16 +85,25 @@ def build_prompt(
         extras.append(f"Additional direction: {extra_note}.")
     extra_block = (" " + " ".join(extras)) if extras else ""
     return (
-        "Create an empty commercial e-commerce background only. "
+        "Generate an EMPTY commercial e-commerce background photograph only. "
         f"{product_line}"
         f"Scene direction: {scene}. "
         f"Visual style: {_style_label(style)}. "
         f"Color tone: {color_hint or 'soft neutral'}. "
         f"{extra_block} "
-        "Leave a large clean central area for later product placement. "
-        "Realistic lighting and soft contact-shadow-friendly ground plane. "
-        "Do not generate any product, packaging, person, animal, text, watermark, or logo. "
-        "High quality advertising photography background."
+        "Composition: large clean central negative space for later product placement; "
+        "soft contact-shadow-friendly ground or table plane; realistic advertising lighting. "
+        f"Strict exclusions: {_NEGATIVE_SUBJECTS}. "
+        "Background plate only — environment and surfaces, nothing to sell."
+    )
+
+
+def build_negative_prompt() -> str:
+    return (
+        "product, merchandise, shoes, sneakers, boots, sandals, footwear, clothing, bag, "
+        "electronics, phone, tablet, headphones, watch, jewelry, packaging, box, bottle, "
+        "mannequin, person, hands, animal, logo, watermark, text, brand, object on pedestal, "
+        "hero product, still life product shot"
     )
 
 
@@ -143,10 +162,12 @@ def generate_seedream(prompt, output_dir: Path):
     }
 
     last_error = None
+    negative = build_negative_prompt()
     for model in models:
         payload = {
             "model": model,
             "prompt": prompt,
+            "negative_prompt": negative,
             "size": size,
             "n": 1,
             "response_format": "url",
@@ -170,14 +191,21 @@ def generate_seedream(prompt, output_dir: Path):
             ):
                 last_error = RuntimeError(err_text)
                 continue
-            # 参数不兼容时去掉 watermark / response_format 再试一次
-            soft = {k: v for k, v in payload.items() if k not in ("watermark", "response_format")}
-            try:
-                response = requests.post(url, headers=headers, json=soft, timeout=timeout)
-            except requests.exceptions.Timeout as exc:
-                raise TimeoutError(
-                    f"Seedream 生成超时（>{timeout}s，模型 {model}）。"
-                ) from exc
+            # 参数不兼容时逐步去掉可选字段再试
+            for drop in (
+                ("negative_prompt", "watermark", "response_format"),
+                ("watermark", "response_format"),
+                ("negative_prompt",),
+            ):
+                soft = {k: v for k, v in payload.items() if k not in drop}
+                try:
+                    response = requests.post(url, headers=headers, json=soft, timeout=timeout)
+                except requests.exceptions.Timeout as exc:
+                    raise TimeoutError(
+                        f"Seedream 生成超时（>{timeout}s，模型 {model}）。"
+                    ) from exc
+                if response.status_code < 400:
+                    break
             if response.status_code >= 400:
                 print(response.text[:1000])
                 last_error = RuntimeError(response.text[:500])

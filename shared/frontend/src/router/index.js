@@ -40,6 +40,12 @@ const routes = [
         meta: { title: '文案生成' },
       },
       {
+        path: 'writing-poster',
+        name: 'WritingPoster',
+        component: () => import('@/views/WritingPosterWorkflowPage.vue'),
+        meta: { title: '文案·海报工作流' },
+      },
+      {
         path: 'poster-workflow',
         name: 'PosterWorkflow',
         component: () => import('@/views/PosterWorkflowPage.vue'),
@@ -59,10 +65,10 @@ const routes = [
         path: 'writing-history',
         redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: 'writing' } }),
       },
-      // 旧路由兼容：跳到工作流对应步骤
+      // 旧路由兼容：跳到海报工作流对应步骤
       { path: 'matte', redirect: { path: '/poster-workflow', query: { step: '0' } } },
-      { path: 'background', redirect: { path: '/poster-workflow', query: { step: '1' } } },
-      { path: 'poster', redirect: { path: '/poster-workflow', query: { step: '2' } } },
+      { path: 'background', redirect: { path: '/poster-workflow', query: { step: 'background' } } },
+      { path: 'poster', redirect: { path: '/poster-workflow', query: { step: 'poster' } } },
       {
         path: 'chat',
         name: 'Chat',

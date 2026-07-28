@@ -42,22 +42,22 @@ def _services():
 def get_options():
     return _ok({
         "styles": [
-            {"value": "warm", "label": "温暖居家"},
-            {"value": "scandi", "label": "北欧明亮"},
+            {"value": "default", "label": "通用"},
             {"value": "minimalist", "label": "简约纯色"},
+            {"value": "scandi", "label": "北欧明亮"},
+            {"value": "warm", "label": "温暖居家"},
             {"value": "luxury", "label": "奢华质感"},
             {"value": "tech", "label": "科技感"},
             {"value": "outdoor", "label": "户外自然"},
             {"value": "industrial", "label": "工业 loft"},
-            {"value": "default", "label": "通用"},
         ],
         "scenes": [
             {"value": "", "label": "自动按商品推断"},
-            {"value": "bright living room corner with empty floor space", "label": "明亮客厅角落"},
-            {"value": "modern desk lifestyle shelf, soft daylight", "label": "现代桌面陈列"},
-            {"value": "minimal studio pedestal, soft fabric ground", "label": "极简展台"},
-            {"value": "cozy cafe table corner, warm ambient light", "label": "咖啡馆一角"},
-            {"value": "luxury dark gradient jewelry display surface", "label": "奢品展台"},
+            {"value": "empty bright living room corner with clear floor space, no furniture clutter", "label": "明亮客厅角落"},
+            {"value": "empty modern desk surface, soft daylight, nothing on the desk", "label": "现代桌面陈列"},
+            {"value": "empty minimal studio with soft seamless backdrop and blank pedestal", "label": "极简展台"},
+            {"value": "empty cafe table corner surface, warm ambient light, no cups or objects", "label": "咖啡馆一角"},
+            {"value": "empty luxury dark gradient display surface, nothing on it", "label": "奢品展台"},
         ],
         "lightings": [
             {"value": "", "label": "请选择"},
@@ -99,7 +99,7 @@ def get_styles():
 @router.post("/generate")
 async def generate(
     category: str = Form(...),
-    style: str = Form("warm"),
+    style: str = Form("default"),
     color_hint: str = Form(""),
     product_name: str = Form(""),
     brand: str = Form(""),

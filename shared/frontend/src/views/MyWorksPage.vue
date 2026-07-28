@@ -8,7 +8,7 @@
       <div class="head-actions">
         <el-button @click="reload" :loading="loading">刷新</el-button>
         <el-button v-if="mainTab === 'writing'" type="primary" plain @click="$router.push('/writing')">去写文案</el-button>
-        <el-button v-else type="primary" plain @click="$router.push('/poster-workflow?step=2')">去生成海报</el-button>
+        <el-button v-else type="primary" plain @click="$router.push('/poster-workflow?step=poster')">去生成海报</el-button>
       </div>
     </div>
 
@@ -373,8 +373,8 @@ function useForPoster(item) {
   sessionStorage.setItem('poster_copy_override', JSON.stringify(copy))
   appStore.clearPosterConfig()
   appStore.setPosterConfig(copy, appStore.mattedProductId || appStore.selectedProductId)
-  ElMessage.success('已带入海报文案，进入工作流合成')
-  router.push('/poster-workflow?step=2')
+  ElMessage.success('已带入海报文案，进入海报合成')
+  router.push({ path: '/poster-workflow', query: { step: 'poster' } })
 }
 
 async function removeWriting(item) {

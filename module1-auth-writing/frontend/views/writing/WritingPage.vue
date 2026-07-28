@@ -7,7 +7,7 @@
           <span class="panel-title"><el-icon><Edit /></el-icon> {{ $t('writing.title') }}</span>
         </template>
         <el-form :model="form" label-position="top" size="default">
-          <el-form-item :label="$t('writing.pickFromCatalog')">
+          <el-form-item v-if="!workflowMode" :label="$t('writing.pickFromCatalog')">
             <el-select
               v-model="selectedProductId"
               filterable
@@ -85,9 +85,28 @@
             <el-button type="primary" size="large" :loading="generating" block @click="handleGenerate">
               <el-icon><MagicStick /></el-icon> {{ generating ? $t('writing.generating') : $t('writing.generateBtn') }}
             </el-button>
+            <el-button
+              v-if="workflowMode && results.length"
+              type="success"
+              size="large"
+              block
+              style="margin-top:10px"
+              @click="continueInWorkflow"
+            >
+              带入海报并继续 →
+            </el-button>
           </el-form-item>
         </el-form>
       </el-card>
+
+      <el-alert
+        v-if="workflowMode"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-top:12px"
+        title="已从选品带入。生成后点「带入海报并继续」，或点上方「跳过文案，去做海报」。"
+      />
     </div>
 
     <!-- 右侧：结果展示 -->
@@ -127,7 +146,7 @@
       <el-empty v-else description="选择风格 → 输入商品信息 → 点击生成" />
 
       <!-- 历史记录 -->
-      <div class="history-bar">
+      <div class="history-bar" v-if="!workflowMode">
         <el-button text type="primary" @click="openHistory" :loading="loadingHistory" v-if="!showHistory">
           <el-icon><Clock /></el-icon> {{ $t('writing.history') }}
         </el-button>
@@ -175,11 +194,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generateCopywriting, getWritingHistory, searchWritingProducts } from '@/api/writing'
 import { useAppStore } from '@/store/useAppStore'
 import { ElMessage } from 'element-plus'
+
+const props = defineProps({
+  workflowMode: { type: Boolean, default: false },
+})
+const emit = defineEmits(['continue-workflow'])
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -291,12 +315,47 @@ async function handleGenerate() {
   try {
     const data = await generateCopywriting(form)
     results.value = data.results
+    persistWritingResult(results.value[0])
     ElMessage.success(t('writing.generateSuccess'))
   } catch {
     // handled
   } finally {
     generating.value = false
   }
+}
+
+function persistWritingResult(item) {
+  if (!item) return
+  try {
+    sessionStorage.setItem('workflow_writing_result', JSON.stringify(item))
+    sessionStorage.setItem('workflow_writing_done', '1')
+  } catch { /* ignore */ }
+}
+
+function continueInWorkflow() {
+  const item = results.value[0]
+  if (!item) {
+    ElMessage.warning('请先生成文案')
+    return
+  }
+  persistWritingResult(item)
+  const lines = String(item.body || '')
+    .split(/[\n。！？!?；;]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const copy = {
+    title: (item.title || form.product_name || '').slice(0, 40),
+    subtitle: (lines[0] || '').slice(0, 48),
+    selling_point_1: (lines[1] || '').slice(0, 36),
+    selling_point_2: (lines[2] || '').slice(0, 36),
+    cta_text: '立即选购',
+    discount: (lines[0] || '').slice(0, 48),
+    price: '立即选购',
+  }
+  sessionStorage.setItem('poster_copy_override', JSON.stringify(copy))
+  appStore.setPosterConfig(copy, appStore.mattedProductId || appStore.selectedProductId)
+  ElMessage.success('文案已带入海报步骤')
+  emit('continue-workflow')
 }
 
 function copyText(text) {
