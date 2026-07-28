@@ -226,6 +226,14 @@ def _demo_image_for_type(product_type: str | None) -> str:
     return f"/static/demo-products/{name}"
 
 
+def _first_nonempty(*values: Optional[str]) -> str:
+    for v in values:
+        s = (v or "").strip()
+        if s:
+            return s
+    return ""
+
+
 def product_to_card(p: AboProduct) -> dict:
     """前端商品卡片字段。有 ABO 实图用实图，否则品类演示图兜底。"""
     bullets_zh = (p.bullet_points_zh or "").replace("；", "|")
@@ -234,12 +242,20 @@ def product_to_card(p: AboProduct) -> dict:
     image_url = (p.image_url or "").strip() or _demo_image_for_type(p.product_type)
     if image_url and not image_url.startswith(("/", "http://", "https://", "data:")):
         image_url = "/" + image_url.lstrip("/")
+    display_name = _first_nonempty(
+        p.item_name_zh,
+        p.item_name,
+        p.product_type,
+        p.brand_zh,
+        p.brand,
+    ) or "商品"
+    brand = _first_nonempty(p.brand_zh, p.brand)
     return {
         "item_id": p.item_id,
-        "name": p.item_name_zh or p.item_name or "商品",
-        "name_en": p.item_name,
-        "brand": p.brand_zh or p.brand or "",
-        "product_type": p.product_type or "",
+        "name": display_name,
+        "name_en": (p.item_name or "").strip() or None,
+        "brand": brand,
+        "product_type": (p.product_type or "").strip(),
         "color": p.color or "",
         "highlights": highlights,
         "image_url": image_url,

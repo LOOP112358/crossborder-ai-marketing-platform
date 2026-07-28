@@ -65,19 +65,16 @@
                         <img
                           v-if="resolveProductImage(p)"
                           :src="resolveProductImage(p)"
-                          :alt="p.name"
+                          :alt="productDisplayName(p)"
                           loading="lazy"
                           @error="onImgError($event, p)"
                         />
-                        <span v-else class="thumb-fallback">{{ (p.name || '?').slice(0, 1).toUpperCase() }}</span>
+                        <span v-else class="thumb-fallback">{{ productInitial(p) }}</span>
                       </div>
                       <div class="product-body">
-                        <div class="product-name">{{ p.name }}</div>
-                        <div class="product-brand" v-if="p.brand">{{ p.brand }}</div>
-                        <div class="product-type" v-if="p.product_type">{{ p.product_type }}</div>
-                        <ul class="product-highlights" v-if="p.highlights?.length">
-                          <li v-for="(h, i) in p.highlights.slice(0, 2)" :key="i">{{ h }}</li>
-                        </ul>
+                        <div class="product-name">{{ productDisplayName(p) }}</div>
+                        <div class="product-brand">{{ productBrandLabel(p) }}</div>
+                        <div class="product-type" v-if="productTypeLabel(p)">{{ productTypeLabel(p) }}</div>
                       </div>
                     </div>
                   </div>
@@ -186,7 +183,7 @@ function cacheMessageProducts(messageId, products) {
   if (!messageId || !products?.length) return
   try {
     const all = readProductCache()
-    all[String(messageId)] = products
+    all[String(messageId)] = normalizeProductList(products)
     const keys = Object.keys(all)
     if (keys.length > 200) keys.slice(0, keys.length - 200).forEach((k) => delete all[k])
     sessionStorage.setItem(PRODUCT_CACHE_KEY, JSON.stringify(all))
@@ -198,13 +195,13 @@ function cacheMessageProducts(messageId, products) {
 function cachedProductsFor(messageId) {
   if (!messageId) return []
   const hit = readProductCache()[String(messageId)]
-  return Array.isArray(hit) ? hit : []
+  return Array.isArray(hit) ? normalizeProductList(hit) : []
 }
 
 function pickProducts(payload) {
   const fromAsst = payload?.assistant_message?.products
-  if (Array.isArray(fromAsst) && fromAsst.length) return fromAsst
-  if (Array.isArray(payload?.products) && payload.products.length) return payload.products
+  if (Array.isArray(fromAsst) && fromAsst.length) return normalizeProductList(fromAsst)
+  if (Array.isArray(payload?.products) && payload.products.length) return normalizeProductList(payload.products)
   return []
 }
 
@@ -216,8 +213,50 @@ function normalizeImageUrl(url) {
 }
 
 function thumbStyle(p) {
-  const i = Math.abs(String(p.item_id || p.name || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % THUMB_COLORS.length
+  const key = productDisplayName(p) || p?.item_id || ''
+  const i = Math.abs(String(key).split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % THUMB_COLORS.length
   return { '--thumb': THUMB_COLORS[i] }
+}
+
+function productDisplayName(p) {
+  const raw = [p?.name, p?.name_en, p?.product_type, p?.brand, '商品']
+    .map((x) => String(x || '').trim())
+    .find(Boolean)
+  return raw || '商品'
+}
+
+function productBrandLabel(p) {
+  const brand = String(p?.brand || '').trim()
+  if (brand) return brand
+  const type = String(p?.product_type || '').trim()
+  if (type && type !== productDisplayName(p)) return type
+  return '商品'
+}
+
+function productTypeLabel(p) {
+  const type = String(p?.product_type || '').trim()
+  if (!type) return ''
+  if (type === productDisplayName(p) || type === productBrandLabel(p)) return ''
+  return type
+}
+
+function productInitial(p) {
+  const name = productDisplayName(p)
+  return (name || '?').slice(0, 1).toUpperCase()
+}
+
+function normalizeProductCard(p) {
+  if (!p || typeof p !== 'object') return p
+  return {
+    ...p,
+    name: productDisplayName(p),
+    brand: String(p.brand || '').trim(),
+    product_type: String(p.product_type || '').trim(),
+  }
+}
+
+function normalizeProductList(list) {
+  return (Array.isArray(list) ? list : []).map(normalizeProductCard).filter(Boolean)
 }
 
 function demoImageForProduct(p) {
@@ -338,7 +377,7 @@ async function loadMessages() {
   try {
     const rows = await request.get(`/chat/messages/${currentSessionId.value}`)
     messages.value = (rows || []).map((m) => {
-      const fromApi = Array.isArray(m.products) && m.products.length ? m.products : []
+      const fromApi = Array.isArray(m.products) && m.products.length ? normalizeProductList(m.products) : []
       const products = fromApi.length ? fromApi : cachedProductsFor(m.id)
       if (products.length) cacheMessageProducts(m.id, products)
       return { ...m, products }
@@ -613,60 +652,97 @@ onMounted(loadSessions)
   overflow-x: auto;
   padding: 10px 0 4px;
   margin-top: 6px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 .product-card {
-  flex: 0 0 168px;
+  flex: 0 0 228px;
+  width: 228px;
+  height: 96px;
+  box-sizing: border-box;
   border: 1.5px solid rgba(44, 58, 66, 0.2);
   border-radius: 14px;
   background: #f7faf8;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  position: relative;
 }
 .product-thumb {
-  height: 96px;
+  flex: 0 0 80px;
+  width: 80px;
+  height: 80px;
+  margin: 0 0 0 8px;
+  border-radius: 10px;
   background: linear-gradient(145deg, var(--thumb, #2f6f6a), rgba(255,255,255,0.35));
   display: grid;
   place-items: center;
+  overflow: hidden;
   position: relative;
+  z-index: 0;
 }
 .product-thumb img {
-  width: 100%;
-  height: 100%;
+  width: 80px;
+  height: 80px;
+  max-width: 80px;
+  max-height: 80px;
   object-fit: cover;
+  object-position: center;
+  display: block;
 }
 .thumb-fallback {
   color: #fff;
-  font-size: 28px;
+  font-size: 22px;
   font-family: var(--font-display);
   font-weight: 600;
+  line-height: 1;
 }
-.product-body { padding: 8px 10px 10px; }
+.product-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 10px 12px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  position: relative;
+  z-index: 1;
+  background: #f7faf8;
+}
 .product-name {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
+  color: var(--ink, #2c3a42);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  word-break: break-word;
 }
-.product-brand { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.product-brand {
+  font-size: 11px;
+  color: var(--ink-soft);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .product-type {
-  display: inline-block;
-  margin-top: 4px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 999px;
   background: rgba(47, 111, 106, 0.12);
   color: #2f6f6a;
-}
-.product-highlights {
-  margin: 6px 0 0;
-  padding-left: 14px;
-  font-size: 11px;
-  color: var(--ink-soft);
-  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .msg-bubble.typing {
