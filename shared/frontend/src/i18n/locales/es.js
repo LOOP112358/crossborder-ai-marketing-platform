@@ -17,6 +17,7 @@ export default {
   },
   nav: {
     home: 'Panel',
+    catalog: 'Catálogo',
     writing: 'Redacción',
     matte: 'Recorte',
     background: 'Fondo',
@@ -53,6 +54,8 @@ export default {
   home: {
     welcome: 'Bienvenido a la Plataforma de Marketing E-commerce con IA',
     welcomeDesc: 'Herramientas integrales de marketing para impulsar la promoción de sus productos',
+    catalogName: 'Centro de selección',
+    catalogDesc: 'Explora ABO y pasa a redacción o póster en un clic',
     writingName: 'Redacción IA',
     writingDesc: 'Generación de textos de marketing multi-plataforma y multi-idioma impulsada por IA',
     matteName: 'Recorte de imagen',

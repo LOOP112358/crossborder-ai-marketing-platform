@@ -17,6 +17,7 @@ export default {
   },
   nav: {
     home: '首页导航',
+    catalog: '智能选品',
     writing: '文案生成',
     matte: '商品抠图',
     background: '背景生成',
@@ -53,6 +54,8 @@ export default {
   home: {
     welcome: '欢迎使用 AI 电商营销工具平台',
     welcomeDesc: '一站式电商营销工具，助力您的产品推广',
+    catalogName: '智能选品中心',
+    catalogDesc: '检索 ABO 货盘，选定后一键进入文案生成或海报制作',
     writingName: '文案生成',
     writingDesc: '基于AI大模型，输入商品信息自动生成多平台、多语言营销文案',
     matteName: '商品抠图',

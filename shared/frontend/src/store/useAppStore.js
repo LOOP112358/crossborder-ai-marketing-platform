@@ -46,6 +46,9 @@ export const useAppStore = defineStore('app', () => {
     price: '',
   }
 
+  /** 活动选品助手带入文案页的建议 */
+  const campaignHint = ref(null)
+
   function clearPosterConfig() {
     posterConfig.value = {
       templateId: posterConfig.value?.templateId ?? null,
@@ -67,6 +70,10 @@ export const useAppStore = defineStore('app', () => {
         clearPosterConfig()
       }
     }
+  }
+
+  function setCampaignHint(hint) {
+    campaignHint.value = hint || null
   }
 
   function setSelectedProduct(product, posterCopy = null) {
@@ -142,8 +149,8 @@ export const useAppStore = defineStore('app', () => {
     mattedUrl, category, categoryEn, confidence,
     selectedProductId, selectedProduct, productImageUrl, mattedProductId,
     seedreamBgUrl, enhancedBgUrl, preferredBgUrl, bgStyle,
-    posterConfig, posterConfigProductId,
+    posterConfig, posterConfigProductId, campaignHint,
     setMatteResult, setSelectedProduct, setBackgroundResult, chooseBackground,
-    setPosterConfig, clearPosterConfig, isPosterCopyInSync, isPosterConfigForProduct,
+    setPosterConfig, clearPosterConfig, isPosterCopyInSync, isPosterConfigForProduct, setCampaignHint,
   }
 })

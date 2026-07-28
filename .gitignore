@@ -44,3 +44,7 @@ module4-poster/static/poster/uploads/*
 !static/**/.gitkeep
 !module4-poster/static/poster/**/.gitkeep
 !static/matte/.gitkeep
+tmp_*.json
+tmp_*.css
+tmp_*.js
+tmp_*.jpg

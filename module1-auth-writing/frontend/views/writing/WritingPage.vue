@@ -178,9 +178,11 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generateCopywriting, getWritingHistory, searchWritingProducts } from '@/api/writing'
+import { useAppStore } from '@/store/useAppStore'
 import { ElMessage } from 'element-plus'
 
 const { t, locale } = useI18n()
+const appStore = useAppStore()
 const generating = ref(false)
 const results = ref([])
 
@@ -216,13 +218,36 @@ async function remoteSearchProducts(query) {
   }, 280)
 }
 
+function applyProduct(p, notify = true) {
+  if (!p) return
+  selectedProductId.value = p.id
+  form.product_name = p.name || p.item_name || ''
+  const angle = appStore.campaignHint?.angle
+  const baseFeatures = p.features || (p.feature_list || []).join('、') || ''
+  form.product_features = angle
+    ? `【活动角度】${angle}${baseFeatures ? `；${baseFeatures}` : ''}`
+    : baseFeatures
+  if (appStore.campaignHint?.platforms?.length) {
+    form.platforms = [...appStore.campaignHint.platforms]
+  }
+  if (appStore.campaignHint?.language) {
+    form.language = appStore.campaignHint.language
+  }
+  if (appStore.campaignHint?.style) {
+    form.style = appStore.campaignHint.style
+  }
+  if (!productOptions.value.some((x) => x.id === p.id)) {
+    productOptions.value = [p, ...productOptions.value]
+  }
+  appStore.setSelectedProduct(p)
+  if (notify) ElMessage.success(t('writing.catalogSelected'))
+}
+
 function onProductPicked(id) {
   if (!id) return
   const p = productOptions.value.find((x) => x.id === id)
   if (!p) return
-  form.product_name = p.name || p.item_name || ''
-  form.product_features = p.features || ''
-  ElMessage.success(t('writing.catalogSelected'))
+  applyProduct(p)
 }
 
 function clearCatalogSelection() {
@@ -324,6 +349,9 @@ function reloadFromHistory(item) {
 
 onMounted(() => {
   remoteSearchProducts('')
+  if (appStore.selectedProduct) {
+    applyProduct(appStore.selectedProduct, true)
+  }
   try {
     const raw = sessionStorage.getItem('writing_reuse')
     if (raw) {

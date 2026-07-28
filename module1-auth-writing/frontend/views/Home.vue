@@ -8,7 +8,10 @@
           以智能串联跨境经营：文案、海报工作流、客服与看板，一站式完成从种草到运营。
         </p>
         <div class="actions">
-          <el-button class="sketch-btn sketch-btn-primary" size="large" @click="$router.push('/writing')">
+          <el-button class="sketch-btn sketch-btn-primary" size="large" @click="$router.push('/catalog')">
+            打开选品中心
+          </el-button>
+          <el-button class="sketch-btn" size="large" @click="$router.push('/writing')">
             先写一段文案
           </el-button>
           <el-button class="sketch-btn" size="large" @click="$router.push('/poster-workflow')">
@@ -49,6 +52,15 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
 const modules = computed(() => [
+  {
+    name: t('home.catalogName'),
+    desc: t('home.catalogDesc'),
+    path: '/catalog',
+    icon: '⌕',
+    owner: '商家侧',
+    status: t('home.done'),
+    ready: true,
+  },
   {
     name: t('home.writingName'),
     desc: t('home.writingDesc'),

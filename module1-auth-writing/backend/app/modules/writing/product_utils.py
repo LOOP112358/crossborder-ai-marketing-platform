@@ -113,10 +113,39 @@ def features_text(p: AboProduct) -> str:
     return "；".join(feature_list(p, 8))[:500]
 
 
+def _demo_image_for_type(product_type: Optional[str]) -> str:
+    """无 ABO 实图时的本地演示缩略图（商家选品中心 / 文案共用）。"""
+    pt = (product_type or "").upper()
+    if any(k in pt for k in ("HEADPHONE", "EARPHONE", "EARBUD", "AUDIO", "ELECTRONIC")):
+        name = "headphones.svg"
+    elif any(k in pt for k in ("SHOE", "FOOTWEAR", "SANDAL", "BOOT", "SNEAKER")):
+        name = "shoes.svg"
+    elif any(k in pt for k in ("BOTTLE", "KITCHEN", "CUP", "MUG")):
+        name = "bottle.svg"
+    elif any(k in pt for k in ("APPAREL", "SHIRT", "DRESS", "CLOTH")):
+        name = "apparel.svg"
+    elif any(k in pt for k in ("HOME", "LAMP", "FURNITURE", "SOFA", "CHAIR", "TABLE", "RUG")):
+        name = "home.svg"
+    else:
+        name = "product.svg"
+    return f"/static/demo-products/{name}"
+
+
+def resolve_product_image_url(p: AboProduct) -> Optional[str]:
+    url = getattr(p, "image_url", None)
+    if url:
+        return url
+    path = (getattr(p, "image_path", None) or "").strip()
+    if path.startswith("http://") or path.startswith("https://") or path.startswith("/static/"):
+        return path
+    return _demo_image_for_type(getattr(p, "product_type", None))
+
+
 def serialize_product(p: AboProduct) -> Dict[str, Any]:
     name = display_name(p)
     feats = feature_list(p)
     cat_zh = type_to_zh(p.product_type)
+    image_url = resolve_product_image_url(p)
     return {
         "id": p.id,
         "item_id": p.item_id,
@@ -133,7 +162,7 @@ def serialize_product(p: AboProduct) -> Dict[str, Any]:
         "feature_list": feats,
         "main_image_id": p.main_image_id or "",
         "image_path": p.image_path or "",
-        "image_url": p.image_url,
+        "image_url": image_url,
         "label": f"{name}" + (f" · {cat_zh}" if cat_zh else ""),
         "has_image": bool(p.image_path),
     }

@@ -17,6 +17,7 @@ export default {
   },
   nav: {
     home: 'ホーム',
+    catalog: '商品選定',
     writing: 'コピー生成',
     matte: '画像切り抜き',
     background: '背景生成',
@@ -53,6 +54,8 @@ export default {
   home: {
     welcome: 'AI Eコマースマーケティングプラットフォームへようこそ',
     welcomeDesc: '製品プロモーションを強化するオールインワンツール',
+    catalogName: '商品選定センター',
+    catalogDesc: 'ABO商品を選び、コピー生成やポスター制作へ進む',
     writingName: 'コピー生成',
     writingDesc: 'AI搭載、商品情報を入力するだけでマルチプラットフォーム・多言語のマーケティングコピーを自動生成',
     matteName: '画像切り抜き',

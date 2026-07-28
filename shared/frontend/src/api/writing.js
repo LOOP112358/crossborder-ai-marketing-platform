@@ -18,8 +18,10 @@ export function searchWritingProducts(q = '', limit = 20, hasImage = false, extr
   })
 }
 
-export function listProductCategories() {
-  return request.get('/writing/products/categories')
+export function listProductCategories(hasImage = false) {
+  return request.get('/writing/products/categories', {
+    params: { has_image: hasImage },
+  })
 }
 
 
@@ -37,5 +39,13 @@ export function getPosterCopy(productId, language = 'zh', llm = true) {
       Pragma: 'no-cache',
     },
   })
+}
+
+export function listCampaigns() {
+  return request.get('/writing/campaigns')
+}
+
+export function recommendCampaign(payload) {
+  return request.post('/writing/campaigns/recommend', payload)
 }
 
