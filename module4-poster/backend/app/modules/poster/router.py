@@ -206,6 +206,8 @@ def api_compose(req:ComposeRequest,current_user:User=Depends(get_current_user),d
         )
     except FileNotFoundError as e:
         raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
 
     asset_kind = "base" if skip_text else "final"
     record = PosterHistory(

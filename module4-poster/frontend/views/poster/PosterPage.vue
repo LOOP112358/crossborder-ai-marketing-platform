@@ -190,7 +190,17 @@
             <el-button type="primary" link @click="$router.push('/my-works?tab=poster')">查看全部历史 →</el-button>
           </div>
           <div class="preview-box">
-            <img v-if="posterUrl" :src="posterUrl" alt="poster" />
+            <img
+              v-if="posterUrl && !previewBroken"
+              :src="previewSrc"
+              alt="poster"
+              @error="onPreviewError"
+            />
+            <div v-else-if="posterUrl && previewBroken" class="preview-error">
+              <p>图片加载失败</p>
+              <a :href="posterUrl" target="_blank" rel="noopener">在新标签打开原图</a>
+              <p class="hint">{{ posterUrl }}</p>
+            </div>
             <span v-else>暂无生成结果</span>
           </div>
           <div v-if="posterUrl" class="preview-actions">
@@ -225,10 +235,20 @@ const composing = ref(false)
 const refiningCopy = ref(false)
 const favoriting = ref(false)
 const posterUrl = ref('')
+const previewBroken = ref(false)
 const lastResultId = ref(null)
 const statusMsg = ref('')
 const templates = ref([])
 const openPanels = ref(['title'])
+
+const previewSrc = computed(() => {
+  const raw = (posterUrl.value || '').trim()
+  if (!raw) return ''
+  // 保证同域绝对路径，并加短缓存戳避免偶发 404 被浏览器缓存
+  const path = raw.startsWith('http') ? raw : (raw.startsWith('/') ? raw : `/${raw}`)
+  const join = path.includes('?') ? '&' : '?'
+  return `${path}${join}t=${lastResultId.value || Date.now()}`
+})
 
 const isBaseStage = computed(() => props.stage === 'base')
 const isTextStage = computed(() => props.stage === 'text')
@@ -410,6 +430,7 @@ async function composePoster() {
     const data = await request.post('/poster/compose', payload, {
       timeout: needRefine ? 180000 : 60000,
     })
+    previewBroken.value = false
     posterUrl.value = data.poster_url
     lastResultId.value = data.id
     if (isBaseStage.value) {
@@ -427,6 +448,11 @@ async function composePoster() {
   } finally {
     composing.value = false
   }
+}
+
+function onPreviewError() {
+  previewBroken.value = true
+  ElMessage.warning('预览图加载失败，可点「在新标签打开原图」或到「我的作品」查看')
 }
 
 async function favoriteLast() {
@@ -607,6 +633,7 @@ onMounted(async () => {
       if (base.bg_url) form.bg_url = base.bg_url
       if (isTextStage.value || props.stage === 'all') {
         posterUrl.value = base.poster_url || ''
+        previewBroken.value = false
         ElMessage.success('已载入无字底图，可继续加文案')
       }
     }
@@ -617,6 +644,7 @@ onMounted(async () => {
   }
   if (isTextStage.value && appStore.basePosterUrl) {
     posterUrl.value = appStore.basePosterUrl
+    previewBroken.value = false
   }
 
   if (isBaseStage.value) {
@@ -720,6 +748,13 @@ label.mini { margin-top: 0; font-size: 12px; font-weight: 500; color: #666; }
   color: #999;
 }
 .preview-box img { max-width: 100%; border-radius: 8px; }
+.preview-error {
+  text-align: center;
+  color: #b45309;
+  line-height: 1.6;
+}
+.preview-error a { color: #1e5aa8; }
+.preview-error .hint { margin-top: 8px; font-size: 12px; color: #94a3b8; word-break: break-all; }
 .status-text { margin-top: 12px; color: #2f6f6a; font-weight: 600; word-break: break-all; }
 .base-banner { margin-bottom: 12px; }
 .base-preview-mini {

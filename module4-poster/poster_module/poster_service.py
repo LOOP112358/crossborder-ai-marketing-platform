@@ -874,6 +874,19 @@ def apply_template_overlays(canvas: Image.Image, overlays: list) -> Image.Image:
     return out
 
 
+def _save_poster_png(image: Image.Image) -> str:
+    """落盘海报 PNG，校验文件存在后返回可访问的 /static URL。"""
+    POSTER_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"poster_{uuid.uuid4().hex}.png"
+    save_path = POSTER_DIR / filename
+    image.convert("RGB").save(save_path, format="PNG", optimize=True)
+    if not save_path.is_file() or save_path.stat().st_size < 32:
+        raise RuntimeError(f"海报文件写入失败：{save_path}")
+    # 同时确保与 FastAPI 挂载目录一致（避免模块内相对路径漂移）
+    print(f"[poster] saved {save_path} ({save_path.stat().st_size} bytes) -> /static/poster/{filename}")
+    return f"/static/poster/{filename}"
+
+
 def compose_poster(
     matted_url: str,
     bg_url: str,
@@ -994,11 +1007,7 @@ def compose_poster(
 
     # 无字底图：保存商品+背景合成结果后直接返回
     if skip_text:
-        filename = f"poster_{uuid.uuid4().hex}.png"
-        save_path = POSTER_DIR / filename
-        POSTER_DIR.mkdir(parents=True, exist_ok=True)
-        bg.convert("RGB").save(save_path, quality=95)
-        return f"/static/poster/{filename}"
+        return _save_poster_png(bg)
 
     zone = text_safe_zone(canvas_w, canvas_h, config) if auto_layout else None
     cursor_y = zone["y"] if zone else None
@@ -1168,8 +1177,4 @@ def compose_poster(
     if chip_texts and not chips_drawn and cursor_y is not None:
         _draw_chips_at(min(cursor_y, content_max_y - 40))
 
-    filename = f"poster_{uuid.uuid4().hex}.png"
-    save_path = POSTER_DIR / filename
-    POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    bg.convert("RGB").save(save_path, quality=95)
-    return f"/static/poster/{filename}"
+    return _save_poster_png(bg)
