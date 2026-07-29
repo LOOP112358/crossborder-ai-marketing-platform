@@ -19,6 +19,7 @@ export default {
     home: 'ホーム',
     catalog: '商品選定',
     writing: 'コピー生成',
+    video: '動画脚本',
     matte: '画像切り抜き',
     background: '背景生成',
     poster: 'ポスター合成',

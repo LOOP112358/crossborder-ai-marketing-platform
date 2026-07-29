@@ -11,9 +11,10 @@ from app.core.database import init_db
 # 每个模块独立放在 module{1-5}-*/backend/app/modules/ 下
 # run.py 启动时会自动将所有模块目录加入 sys.path
 
-# 模块1：认证 + 文案生成
+# 模块1：认证 + 文案生成 + 视频脚本试运营
 from app.modules.auth.router import router as auth_router
 from app.modules.writing.router import router as writing_router
+from app.modules.video.router import router as video_router
 
 # 模块2：商品抠图 + 智能识别
 from app.modules.matte.router import router as matte_router
@@ -73,6 +74,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # 路由注册
 app.include_router(auth_router)
 app.include_router(writing_router)
+app.include_router(video_router)
 app.include_router(matte_router)
 app.include_router(background_router)
 app.include_router(poster_router)

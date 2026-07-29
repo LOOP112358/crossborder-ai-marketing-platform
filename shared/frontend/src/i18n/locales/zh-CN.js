@@ -19,6 +19,7 @@ export default {
     home: '首页导航',
     catalog: '智能选品',
     writing: '文案生成',
+    video: '视频脚本',
     matte: '商品抠图',
     background: '背景生成',
     poster: '海报合成',

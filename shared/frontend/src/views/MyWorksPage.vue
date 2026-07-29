@@ -3,11 +3,12 @@
     <div class="page-head">
       <div>
         <h1>我的作品</h1>
-        <p class="subtitle">文案与海报导出记录集中管理，可互相跳转复用</p>
+        <p class="subtitle">文案、视频脚本与海报导出记录集中管理，可互相跳转复用</p>
       </div>
       <div class="head-actions">
         <el-button @click="reload" :loading="loading">刷新</el-button>
         <el-button v-if="mainTab === 'writing'" type="primary" plain @click="$router.push('/writing')">去写文案</el-button>
+        <el-button v-else-if="mainTab === 'video'" type="primary" plain @click="$router.push('/video')">去做视频脚本</el-button>
         <template v-else>
           <el-button plain @click="$router.push('/gallery')">作品广场</el-button>
           <el-button type="primary" plain @click="$router.push('/poster-workflow?step=poster')">去生成海报</el-button>
@@ -17,6 +18,7 @@
 
     <el-tabs v-model="mainTab" @tab-change="onMainTabChange">
       <el-tab-pane label="文案历史" name="writing" />
+      <el-tab-pane label="视频脚本" name="video" />
       <el-tab-pane label="海报作品" name="poster" />
     </el-tabs>
 
@@ -72,6 +74,49 @@
           :total="writingTotal"
           layout="prev, pager, next"
           @current-change="loadWritings"
+        />
+      </div>
+    </div>
+
+    <!-- ===== 视频脚本 ===== -->
+    <div v-show="mainTab === 'video'">
+      <el-empty v-if="!loading && videos.length === 0" description="暂无视频脚本，去「视频脚本试运营」生成一条吧" />
+      <div v-else class="writing-list">
+        <el-card v-for="item in videos" :key="item.id" class="writing-card" shadow="hover">
+          <div class="writing-top">
+            <div>
+              <strong class="writing-product">{{ item.product_name }}</strong>
+              <div class="tag-row">
+                <el-tag size="small" v-if="item.platform">{{ item.platform }}</el-tag>
+                <el-tag size="small" type="info">{{ item.duration_sec }}s</el-tag>
+                <el-tag size="small" type="success" v-if="item.language">{{ item.language }}</el-tag>
+              </div>
+            </div>
+            <span class="time">{{ formatTime(item.created_at) }}</span>
+          </div>
+          <h3 class="writing-title">{{ item.hook || '视频脚本' }}</h3>
+          <p class="writing-body">{{ item.voiceover }}</p>
+          <p v-if="item.cta" class="writing-tags">CTA：{{ item.cta }}</p>
+          <div v-if="(item.storyboard || []).length" class="related">
+            <span class="related-label">分镜 {{ item.storyboard.length }} 镜</span>
+            <span class="related-none">{{ item.storyboard.map(s => `${s.start_sec}-${s.end_sec}s`).join(' · ') }}</span>
+          </div>
+          <div class="card-actions">
+            <el-button size="small" @click="copyVideo(item)">复制全文</el-button>
+            <el-button size="small" type="primary" @click="reuseVideo(item)">重新编辑</el-button>
+            <el-button size="small" type="danger" plain :loading="deletingVideoId === item.id" @click="removeVideo(item)">
+              删除
+            </el-button>
+          </div>
+        </el-card>
+      </div>
+      <div v-if="videoTotal > videoPageSize" class="pager">
+        <el-pagination
+          v-model:current-page="videoPage"
+          :page-size="videoPageSize"
+          :total="videoTotal"
+          layout="prev, pager, next"
+          @current-change="loadVideos"
         />
       </div>
     </div>
@@ -211,6 +256,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import request from '@/api/request'
 import { getWritingHistory, deleteWritingHistory } from '@/api/writing'
+import { getVideoHistory, deleteVideoHistory } from '@/api/video'
 import { publishPoster, unpublishPoster, getPosterHistory } from '@/api/poster'
 import { useAppStore } from '@/store/useAppStore'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -219,7 +265,7 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 
-const mainTab = ref(route.query.tab === 'poster' ? 'poster' : 'writing')
+const mainTab = ref(['poster', 'video'].includes(route.query.tab) ? route.query.tab : 'writing')
 const loading = ref(false)
 
 const writings = ref([])
@@ -227,6 +273,12 @@ const writingPage = ref(1)
 const writingPageSize = 12
 const writingTotal = ref(0)
 const deletingWritingId = ref(null)
+
+const videos = ref([])
+const videoPage = ref(1)
+const videoPageSize = 12
+const videoTotal = ref(0)
+const deletingVideoId = ref(null)
 
 const posters = ref([])
 const posterMode = ref('final')
@@ -314,13 +366,13 @@ function relatedPosters(writing) {
 function onMainTabChange(name) {
   router.replace({ query: { ...route.query, tab: name } })
   if (name === 'poster') {
-    // 切到海报时清掉误带的筛选，并强制刷新列表
     if (posterFilter.value && !filteredPosters.value.length) {
       posterFilter.value = ''
     }
     loadPosters()
   }
   if (name === 'writing' && !writings.value.length) loadWritings()
+  if (name === 'video' && !videos.value.length) loadVideos()
 }
 
 function jumpToRelatedPosters(writing) {
@@ -380,8 +432,23 @@ async function loadPosters() {
   }
 }
 
+async function loadVideos() {
+  loading.value = true
+  try {
+    const data = await getVideoHistory(videoPage.value, videoPageSize)
+    videos.value = data?.items || []
+    videoTotal.value = data?.total || 0
+  } catch (e) {
+    ElMessage.error(e?.message || '加载视频脚本失败')
+    videos.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 async function reload() {
   if (mainTab.value === 'writing') await loadWritings()
+  else if (mainTab.value === 'video') await loadVideos()
   else await loadPosters()
   // 文案页也预加载成稿，便于「相关海报」
   if (mainTab.value === 'writing' && !posters.value.length) {
@@ -414,6 +481,58 @@ async function copyWriting(item) {
     ElMessage.success('已复制全文')
   } catch {
     ElMessage.error('复制失败，请手动选择文本')
+  }
+}
+
+async function copyVideo(item) {
+  const shots = (item.storyboard || [])
+    .map((s) => `[${s.start_sec}-${s.end_sec}s] ${s.visual}\n旁白：${s.voiceover}`)
+    .join('\n\n')
+  const text = [
+    `钩子：${item.hook || ''}`,
+    `口播：${item.voiceover || ''}`,
+    `CTA：${item.cta || ''}`,
+    `标签：${item.hashtags || ''}`,
+    '',
+    '分镜：',
+    shots,
+  ].join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制全文')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+function reuseVideo(item) {
+  sessionStorage.setItem('video_reuse', JSON.stringify({
+    product_name: item.product_name,
+    product_features: item.product_features,
+    product_id: item.product_id,
+    platform: item.platform || 'TikTok',
+    language: item.language || 'zh',
+    duration_sec: item.duration_sec || 15,
+  }))
+  router.push('/video')
+}
+
+async function removeVideo(item) {
+  try {
+    await ElMessageBox.confirm('确定删除该视频脚本？', '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  deletingVideoId.value = item.id
+  try {
+    await deleteVideoHistory(item.id)
+    videos.value = videos.value.filter((x) => x.id !== item.id)
+    videoTotal.value = Math.max(0, videoTotal.value - 1)
+    ElMessage.success('已删除')
+  } catch (e) {
+    ElMessage.error(e?.message || '删除失败')
+  } finally {
+    deletingVideoId.value = null
   }
 }
 
@@ -543,14 +662,16 @@ async function removePoster(item) {
 watch(
   () => route.query.tab,
   (tab) => {
-    if (tab === 'poster' || tab === 'writing') mainTab.value = tab
+    if (tab === 'poster' || tab === 'writing' || tab === 'video') mainTab.value = tab
   },
 )
 
 onMounted(async () => {
   if (route.query.tab === 'poster') mainTab.value = 'poster'
+  if (route.query.tab === 'video') mainTab.value = 'video'
   posterFilter.value = ''
-  await Promise.all([loadWritings(), loadPosters()])
+  if (mainTab.value === 'video') await loadVideos()
+  else await Promise.all([loadWritings(), loadPosters()])
 })
 </script>
 

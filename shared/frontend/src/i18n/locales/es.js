@@ -19,6 +19,7 @@ export default {
     home: 'Panel',
     catalog: 'Catálogo',
     writing: 'Redacción',
+    video: 'Guion de video',
     matte: 'Recorte',
     background: 'Fondo',
     poster: 'Póster',

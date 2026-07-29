@@ -1,5 +1,6 @@
 from app.models.user import User
 from app.models.writing import WritingHistory
+from app.models.video import VideoHistory
 from app.models.matte import MatteHistory
 from app.models.poster import Template, PosterHistory, Favorite
 from app.models.chat import (
@@ -8,7 +9,7 @@ from app.models.chat import (
 from app.models.background import BackgroundHistory, BackgroundCache
 
 __all__ = [
-    "User", "WritingHistory",
+    "User", "WritingHistory", "VideoHistory",
     "MatteHistory",
     "Template", "PosterHistory", "Favorite",
     "ChatSession", "ChatMessage", "ChatFeedback", "SystemDailyStat", "ModuleError", "AboProduct",

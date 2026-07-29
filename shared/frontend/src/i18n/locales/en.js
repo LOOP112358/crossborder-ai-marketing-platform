@@ -19,6 +19,7 @@ export default {
     home: 'Dashboard',
     catalog: 'Product Catalog',
     writing: 'Copywriting',
+    video: 'Video Script',
     matte: 'Image Matting',
     background: 'Background Gen',
     poster: 'Poster Composer',

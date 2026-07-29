@@ -14,6 +14,9 @@
           <el-button class="sketch-btn" size="large" @click="$router.push('/writing')">
             文案生成
           </el-button>
+          <el-button class="sketch-btn" size="large" @click="$router.push('/video')">
+            视频脚本
+          </el-button>
           <el-button class="sketch-btn" size="large" @click="$router.push('/poster-workflow')">
             AI海报工作流
           </el-button>
@@ -71,6 +74,15 @@ const modules = computed(() => [
     ready: true,
   },
   {
+    name: '视频脚本试运营',
+    desc: '生成短视频口播稿与分镜表（不生成视频文件），结果可在「我的作品」查看',
+    path: '/video',
+    icon: '▶',
+    owner: '成员1',
+    status: t('home.done'),
+    ready: true,
+  },
+  {
     name: 'AI海报工作流',
     desc: '抠图 → 背景 → 无字底图 → 加文案；底图可收藏，成稿可发布',
     path: '/poster-workflow',
@@ -81,7 +93,7 @@ const modules = computed(() => [
   },
   {
     name: '我的作品',
-    desc: '文案、底图素材与成稿统一管理，支持收藏与发布广场',
+    desc: '文案、视频脚本、底图素材与成稿统一管理，支持收藏与发布广场',
     path: '/my-works',
     icon: '▤',
     owner: '成员1/4',

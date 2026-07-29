@@ -40,6 +40,12 @@ const routes = [
         meta: { title: '文案生成' },
       },
       {
+        path: 'video',
+        name: 'Video',
+        component: () => import('@m1/views/video/VideoPage.vue'),
+        meta: { title: '视频脚本试运营' },
+      },
+      {
         path: 'writing-poster',
         name: 'WritingPoster',
         component: () => import('@/views/WritingPosterWorkflowPage.vue'),
@@ -70,6 +76,10 @@ const routes = [
       {
         path: 'writing-history',
         redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: 'writing' } }),
+      },
+      {
+        path: 'video-history',
+        redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: 'video' } }),
       },
       // 旧路由兼容：跳到海报工作流对应步骤
       { path: 'matte', redirect: { path: '/poster-workflow', query: { step: '0' } } },

@@ -19,6 +19,7 @@ export default {
     home: '대시보드',
     catalog: '상품 선정',
     writing: '카피라이팅',
+    video: '영상 스크립트',
     matte: '이미지 배경제거',
     background: '배경 생성',
     poster: '포스터 합성',

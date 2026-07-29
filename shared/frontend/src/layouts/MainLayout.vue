@@ -21,6 +21,10 @@
           <el-icon><Edit /></el-icon>
           <span>{{ $t('nav.writing') }}</span>
         </el-menu-item>
+        <el-menu-item index="/video">
+          <el-icon><VideoCamera /></el-icon>
+          <span>{{ $t('nav.video') }}</span>
+        </el-menu-item>
         <el-menu-item index="/poster-workflow">
           <el-icon><Postcard /></el-icon>
           <span>AI海报工作流</span>
@@ -118,12 +122,14 @@ const currentPageTitle = computed(() => {
     '/home': 'nav.home',
     '/catalog': 'nav.catalog',
     '/writing': 'nav.writing',
+    '/video': 'nav.video',
     '/writing-poster': '文案·海报工作流',
     '/poster-workflow': 'AI海报工作流',
     '/my-works': '我的作品',
     '/gallery': '作品广场',
     '/poster-history': '我的作品',
     '/writing-history': '我的作品',
+    '/video-history': '我的作品',
     '/matte': 'AI海报工作流',
     '/background': 'AI海报工作流',
     '/poster': 'AI海报工作流',
