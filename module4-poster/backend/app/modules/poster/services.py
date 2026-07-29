@@ -62,14 +62,14 @@ def compose_poster(
     )
 
 
+def clear_poster_engine_cache():
+    _poster_engine.cache_clear()
+
+
 def init_templates(db):
-    """初始化模板数据到数据库（仅当表为空时）"""
+    """初始化/更新模板数据到数据库（按 id upsert，便于迭代模板样式）"""
     from app.models.poster import Template
 
-    if db.query(Template).count() > 0:
-        return
-
-    # 优先用 poster_module 完整模板
     templates_path = REPO_ROOT / "module4-poster" / "poster_module" / "templates_data.py"
     items = TEMPLATE_DATA
     if templates_path.exists():
@@ -90,10 +90,20 @@ def init_templates(db):
             cfg_json = cfg
         else:
             cfg_json = json.dumps(cfg, ensure_ascii=False)
-        db.add(Template(
-            id=t.get("id"),
-            name=t.get("name") or f"模板{t.get('id')}",
-            preview_url=t.get("preview_url") or "",
-            config_json=cfg_json,
-        ))
+        tid = t.get("id")
+        name = t.get("name") or f"模板{tid}"
+        preview = t.get("preview_url") or ""
+        existing = db.query(Template).filter(Template.id == tid).first() if tid is not None else None
+        if existing:
+            existing.name = name
+            existing.preview_url = preview
+            existing.config_json = cfg_json
+            existing.is_active = True
+        else:
+            db.add(Template(
+                id=tid,
+                name=name,
+                preview_url=preview,
+                config_json=cfg_json,
+            ))
     db.commit()

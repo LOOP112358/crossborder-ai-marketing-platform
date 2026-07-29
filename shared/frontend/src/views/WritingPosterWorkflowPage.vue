@@ -21,7 +21,7 @@
       />
       <el-step
         title="海报生成"
-        :description="skipped.poster ? '已跳过' : '抠图 → 背景 → 合成（可跳过）'"
+        :description="skipped.poster ? '已跳过' : '抠图 → 背景 → 底图 → 加字（可跳过）'"
         @click="jumpPhase(1)"
       />
     </el-steps>
@@ -54,8 +54,8 @@
         <el-button @click="phase = 0">返回文案</el-button>
         <el-button plain type="warning" @click="skipPoster">跳过海报并结束</el-button>
         <el-button :disabled="posterStep === 0" @click="posterStep -= 1">上一步</el-button>
-        <el-button v-if="posterStep < 2" type="primary" @click="posterNext">
-          {{ posterStep === 0 ? '下一步：背景生成' : '下一步：海报合成' }}
+        <el-button v-if="posterStep < 3" type="primary" @click="posterNext">
+          {{ posterNextLabel }}
         </el-button>
         <el-button v-else type="success" @click="finishWorkflow">完成并查看作品</el-button>
       </div>
@@ -63,12 +63,14 @@
       <el-steps :active="posterStep" finish-status="success" align-center class="poster-substeps">
         <el-step title="商品抠图" @click="posterJump(0)" />
         <el-step title="背景生成" @click="posterJump(1)" />
-        <el-step title="海报合成" @click="posterJump(2)" />
+        <el-step title="生成底图" @click="posterJump(2)" />
+        <el-step title="加文案" @click="posterJump(3)" />
       </el-steps>
 
       <MattePage v-show="posterStep === 0" />
       <BackgroundPage v-show="posterStep === 1" />
-      <PosterPage v-show="posterStep === 2" />
+      <PosterPage v-if="posterStep === 2" stage="base" />
+      <PosterPage v-if="posterStep === 3" stage="text" />
     </div>
   </div>
 </template>
@@ -99,6 +101,12 @@ const productLabel = computed(() => {
   const p = appStore.selectedProduct
   if (!p) return ''
   return [p.brand, p.name || p.item_name].filter(Boolean).join(' · ').slice(0, 64)
+})
+
+const posterNextLabel = computed(() => {
+  if (posterStep.value === 0) return '下一步：背景生成'
+  if (posterStep.value === 1) return '下一步：生成底图'
+  return '下一步：加文案'
 })
 
 onMounted(() => {
@@ -159,7 +167,7 @@ function onWritingContinue() {
 function goToPoster() {
   if (writingDone.value) pushWritingToPoster()
   phase.value = 1
-  if (posterStep.value > 2) posterStep.value = 0
+  if (posterStep.value > 3) posterStep.value = 0
 }
 
 function skipWriting() {
@@ -191,12 +199,18 @@ function validatePosterLeave(from) {
       return false
     }
   }
+  if (from === 2) {
+    if (!appStore.basePosterUrl) {
+      ElMessage.warning('请先生成无字底图')
+      return false
+    }
+  }
   return true
 }
 
 function posterNext() {
   if (!validatePosterLeave(posterStep.value)) return
-  if (posterStep.value < 2) posterStep.value += 1
+  if (posterStep.value < 3) posterStep.value += 1
 }
 
 function posterJump(i) {

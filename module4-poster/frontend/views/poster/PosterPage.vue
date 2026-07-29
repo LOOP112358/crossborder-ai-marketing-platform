@@ -1,15 +1,32 @@
 ﻿<template>
   <div class="poster-page sketch-shell">
-    <h1>海报合成</h1>
-    <p class="subtitle">模板 + 商品图 + 背景图 · 支持多文字层样式（颜色 / 字体 / 艺术字 / 坐标）</p>
+    <h1>{{ pageTitle }}</h1>
+    <p class="subtitle">{{ pageSubtitle }}</p>
 
     <el-row :gutter="20">
       <el-col :span="12">
         <el-card shadow="never">
-          <h3>生成海报</h3>
+          <h3>{{ isBaseStage ? '生成无字底图' : (isTextStage ? '基于底图加文案' : '生成海报') }}</h3>
+
+          <div v-if="isTextStage" class="base-banner">
+            <el-alert
+              v-if="!appStore.basePosterUrl"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="尚未选择无字底图。请先完成「生成底图」，或从「我的作品」点「用于加字」。"
+            />
+            <div v-else class="base-preview-mini">
+              <img :src="appStore.basePosterUrl" alt="base" />
+              <div>
+                <strong>当前底图 #{{ appStore.basePosterId || '—' }}</strong>
+                <p class="hint" style="margin:4px 0 0">将在此底图上叠字，不会重新贴商品/背景</p>
+              </div>
+            </div>
+          </div>
 
           <label>选择模板</label>
-          <el-select v-model="form.template_id" style="width:100%" @change="onTemplateChange">
+          <el-select v-model="form.template_id" style="width:100%" @change="onTemplateChange" :disabled="isTextStage && !!appStore.baseTemplateId">
             <el-option
               v-for="t in templates"
               :key="t.id"
@@ -17,21 +34,24 @@
               :label="`${t.id} - ${t.name}${t.purpose ? ' · ' + t.purpose : ''}（使用 ${t.usage_count} 次）`"
             />
           </el-select>
-          <p class="hint">可切换不同用途模板：主图 / 种草 / 大促 / 短视频封面 / 横幅等</p>
+          <p class="hint">{{ isBaseStage ? '模板决定商品摆放位置与画布尺寸；底图阶段不绘制文字装饰框。' : '可切换不同用途模板：主图 / 种草 / 大促 / 短视频封面 / 横幅等' }}</p>
 
-          <h4 class="section-title">图片上传</h4>
-          <label>商品图上传</label>
-          <el-upload :auto-upload="false" :show-file-list="false" :on-change="(f) => onUpload(f, 'product')" accept="image/*">
-            <el-button>上传商品图</el-button>
-          </el-upload>
-          <el-input v-model="form.matted_url" placeholder="/static/.../product.png" size="small" style="margin-top:4px" />
+          <template v-if="!isTextStage">
+            <h4 class="section-title">图片上传</h4>
+            <label>商品图上传</label>
+            <el-upload :auto-upload="false" :show-file-list="false" :on-change="(f) => onUpload(f, 'product')" accept="image/*">
+              <el-button>上传商品图</el-button>
+            </el-upload>
+            <el-input v-model="form.matted_url" placeholder="/static/.../product.png" size="small" style="margin-top:4px" />
 
-          <label>背景图上传</label>
-          <el-upload :auto-upload="false" :show-file-list="false" :on-change="(f) => onUpload(f, 'bg')" accept="image/*">
-            <el-button>上传背景图</el-button>
-          </el-upload>
-          <el-input v-model="form.bg_url" placeholder="/static/.../background.png" size="small" style="margin-top:4px" />
+            <label>背景图上传</label>
+            <el-upload :auto-upload="false" :show-file-list="false" :on-change="(f) => onUpload(f, 'bg')" accept="image/*">
+              <el-button>上传背景图</el-button>
+            </el-upload>
+            <el-input v-model="form.bg_url" placeholder="/static/.../background.png" size="small" style="margin-top:4px" />
+          </template>
 
+          <template v-if="!isBaseStage">
           <h4 class="section-title">文案内容</h4>
           <el-alert
             v-if="copyMismatch"
@@ -132,16 +152,32 @@
             <el-checkbox v-model="form.text_stroke_enabled">文字描边</el-checkbox>
             <el-checkbox v-model="form.text_shadow_enabled">文字阴影</el-checkbox>
           </div>
-          <div class="action-row">
+          </template>
+
+          <div v-if="isBaseStage" class="action-row">
+            <el-checkbox v-model="form.refine_enabled">融合精修（生成底图时）</el-checkbox>
+            <el-select v-model="form.refine_engine" style="width:220px" size="small" :disabled="!form.refine_enabled">
+              <el-option value="seedream" label="Seedream 精修" />
+            </el-select>
+          </div>
+          <div v-else-if="!isTextStage" class="action-row">
             <el-checkbox v-model="form.refine_enabled">融合精修（画文字前）</el-checkbox>
             <el-select v-model="form.refine_engine" style="width:220px" size="small" :disabled="!form.refine_enabled">
               <el-option value="seedream" label="Seedream 精修" />
             </el-select>
           </div>
           <div class="action-row">
-            <el-button type="primary" :loading="composing" @click="composePoster">生成海报</el-button>
-            <el-button type="success" @click="useWhiteStyle">白底推荐样式</el-button>
-            <el-button @click="resetStyle">恢复默认样式</el-button>
+            <el-button type="primary" :loading="composing" @click="composePoster">
+              {{ isBaseStage ? '生成无字底图' : (isTextStage ? '生成成稿' : '生成海报') }}
+            </el-button>
+            <el-button v-if="!isBaseStage" type="success" @click="useWhiteStyle">白底推荐样式</el-button>
+            <el-button v-if="!isBaseStage" @click="resetStyle">恢复默认样式</el-button>
+            <el-button
+              v-if="isBaseStage && lastResultId"
+              type="warning"
+              :loading="favoriting"
+              @click="favoriteLast"
+            >收藏底图</el-button>
           </div>
           <p v-if="statusMsg" class="status-text">{{ statusMsg }}</p>
         </el-card>
@@ -150,7 +186,7 @@
       <el-col :span="12">
         <el-card shadow="never">
           <div class="preview-head">
-            <h3>生成结果预览</h3>
+            <h3>{{ isBaseStage ? '底图预览' : '生成结果预览' }}</h3>
             <el-button type="primary" link @click="$router.push('/my-works?tab=poster')">查看全部历史 →</el-button>
           </div>
           <div class="preview-box">
@@ -158,6 +194,11 @@
             <span v-else>暂无生成结果</span>
           </div>
           <div v-if="posterUrl" class="preview-actions">
+            <el-button
+              v-if="isBaseStage"
+              type="success"
+              @click="$router.push({ path: '/poster-workflow', query: { step: '3' } })"
+            >下一步：加文案</el-button>
             <el-button type="primary" @click="$router.push('/my-works?tab=poster')">打开我的作品</el-button>
           </div>
         </el-card>
@@ -170,16 +211,37 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import request from '@/api/request'
 import { getPosterCopy } from '@/api/writing'
+import { toggleFavorite } from '@/api/poster'
 import { useAppStore } from '@/store/useAppStore'
 import { ElMessage } from 'element-plus'
+
+const props = defineProps({
+  stage: { type: String, default: 'all' }, // base | text | all
+})
+const emit = defineEmits(['base-ready'])
 
 const appStore = useAppStore()
 const composing = ref(false)
 const refiningCopy = ref(false)
+const favoriting = ref(false)
 const posterUrl = ref('')
+const lastResultId = ref(null)
 const statusMsg = ref('')
 const templates = ref([])
 const openPanels = ref(['title'])
+
+const isBaseStage = computed(() => props.stage === 'base')
+const isTextStage = computed(() => props.stage === 'text')
+const pageTitle = computed(() => {
+  if (isBaseStage.value) return '生成无字底图'
+  if (isTextStage.value) return '加文案成稿'
+  return '海报合成'
+})
+const pageSubtitle = computed(() => {
+  if (isBaseStage.value) return '商品图 + 背景图合成无字原始素材，可收藏后多次加字'
+  if (isTextStage.value) return '基于已选底图叠加文案，生成可发布的成稿'
+  return '模板 + 商品图 + 背景图 · 支持多文字层样式（颜色 / 字体 / 艺术字 / 坐标）'
+})
 
 /** 优先用「抠图绑定」的商品 id，保证图文同源 */
 const copyProductId = computed(() => appStore.mattedProductId || appStore.selectedProductId)
@@ -300,46 +362,81 @@ async function loadTemplates() {
 }
 
 async function composePoster() {
-  if (!form.matted_url || !form.bg_url) {
+  if (isTextStage.value) {
+    if (!appStore.basePosterUrl) {
+      ElMessage.warning('请先生成或选择无字底图')
+      return
+    }
+  } else if (!form.matted_url || !form.bg_url) {
     ElMessage.warning('请输入商品图和背景图 URL')
     return
   }
-  if (copyMismatch.value) {
+  if (!isBaseStage.value && copyMismatch.value) {
     ElMessage.error('图文商品不一致，请先点「AI 精炼短文案」同步，或回第1步重新抠图')
     return
   }
-  if (form.matted_url.includes('/static/abo-images/')) {
-    ElMessage.error('当前商品图还是库内原图（带白底）。请回到第1步完成抠图后再合成。')
-    return
-  }
-  if (!form.matted_url.includes('/static/matte/') && !form.matted_url.includes('/static/poster/uploads/')) {
-    ElMessage.warning('建议使用第1步抠图结果（/static/matte/...）作为商品图')
+  if (!isTextStage.value) {
+    if (form.matted_url.includes('/static/abo-images/')) {
+      ElMessage.error('当前商品图还是库内原图（带白底）。请回到第1步完成抠图后再合成。')
+      return
+    }
+    if (!form.matted_url.includes('/static/matte/') && !form.matted_url.includes('/static/poster/uploads/')) {
+      ElMessage.warning('建议使用第1步抠图结果（/static/matte/...）作为商品图')
+    }
   }
   composing.value = true
-  statusMsg.value = form.refine_enabled
+  const needRefine = isBaseStage.value ? form.refine_enabled : (!isTextStage.value && form.refine_enabled)
+  statusMsg.value = needRefine
     ? '正在合成并用 Seedream 融合精修（约 15～45 秒）...'
-    : '正在生成海报...'
+    : (isBaseStage.value ? '正在生成无字底图...' : '正在生成海报...')
   try {
     const p = appStore.selectedProduct || {}
     const payload = {
       ...form,
       sd_refine: false,
-      refine_enabled: form.refine_enabled,
+      refine_enabled: needRefine,
       refine_engine: 'seedream',
       product_hint: [p.brand, p.name || p.item_name, p.product_type].filter(Boolean).join(' / '),
+      skip_text: isBaseStage.value,
+    }
+    if (isTextStage.value) {
+      payload.parent_id = appStore.basePosterId || null
+      payload.base_poster_url = appStore.basePosterUrl
+      payload.template_id = appStore.baseTemplateId || form.template_id
+      payload.matted_url = form.matted_url || appStore.mattedUrl || ''
+      payload.bg_url = form.bg_url || appStore.preferredBgUrl || appStore.seedreamBgUrl || ''
+      payload.refine_enabled = false
     }
     const data = await request.post('/poster/compose', payload, {
-      timeout: form.refine_enabled ? 180000 : 60000,
+      timeout: needRefine ? 180000 : 60000,
     })
     posterUrl.value = data.poster_url
-    statusMsg.value = '海报生成成功！'
-    ElMessage.success('海报合成成功，可在「我的海报」中查看历史')
+    lastResultId.value = data.id
+    if (isBaseStage.value) {
+      appStore.setBasePoster(data)
+      emit('base-ready', data)
+      statusMsg.value = '无字底图生成成功！可收藏或进入加文案'
+      ElMessage.success('底图已保存到「我的作品 · 底图」')
+    } else {
+      statusMsg.value = '海报生成成功！'
+      ElMessage.success('成稿已保存，可在「我的作品」中查看')
+    }
     loadTemplates()
   } catch (e) {
     statusMsg.value = '生成失败：' + (e?.response?.data?.detail || e?.message || '')
   } finally {
     composing.value = false
   }
+}
+
+async function favoriteLast() {
+  if (!lastResultId.value) return
+  favoriting.value = true
+  try {
+    const d = await toggleFavorite(lastResultId.value)
+    ElMessage.success(d?.is_favorite === false ? '已取消收藏' : '底图已收藏')
+  } catch { /* handled */ }
+  finally { favoriting.value = false }
 }
 
 function onTemplateChange(id, silent = false) {
@@ -497,6 +594,36 @@ onMounted(async () => {
     form.matted_url = ''
   }
   form.bg_url = appStore.preferredBgUrl || appStore.seedreamBgUrl || appStore.enhancedBgUrl || form.bg_url
+
+  // 从「我的作品」带入底图
+  try {
+    const raw = sessionStorage.getItem('poster_base_override')
+    if (raw) {
+      const base = JSON.parse(raw)
+      sessionStorage.removeItem('poster_base_override')
+      appStore.setBasePoster(base)
+      if (base.template_id) form.template_id = base.template_id
+      if (base.matted_url) form.matted_url = base.matted_url
+      if (base.bg_url) form.bg_url = base.bg_url
+      if (isTextStage.value || props.stage === 'all') {
+        posterUrl.value = base.poster_url || ''
+        ElMessage.success('已载入无字底图，可继续加文案')
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (isTextStage.value && appStore.baseTemplateId) {
+    form.template_id = appStore.baseTemplateId
+  }
+  if (isTextStage.value && appStore.basePosterUrl) {
+    posterUrl.value = appStore.basePosterUrl
+  }
+
+  if (isBaseStage.value) {
+    clearFormCopy()
+    return
+  }
+
   clearFormCopy()
 
   // 从「我的作品」一键带入的文案：优先使用，不再自动 AI 覆盖
@@ -545,11 +672,19 @@ watch(
 watch(
   () => appStore.mattedProductId,
   (pid, prev) => {
+    if (isBaseStage.value) return
     if (pid == null || (prev != null && Number(pid) !== Number(prev))) {
       clearFormCopy()
       appStore.clearPosterConfig()
     }
     if (pid) refineWithAI()
+  },
+)
+
+watch(
+  () => appStore.basePosterUrl,
+  (url) => {
+    if (isTextStage.value && url) posterUrl.value = url
   },
 )
 </script>
@@ -572,7 +707,7 @@ label.mini { margin-top: 0; font-size: 12px; font-weight: 500; color: #666; }
   margin-bottom: 8px;
 }
 .preview-head h3 { margin: 0; }
-.preview-actions { margin-top: 12px; }
+.preview-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .preview-box {
   border: 2px dashed #dcdfe6;
   border-radius: 10px;
@@ -586,5 +721,21 @@ label.mini { margin-top: 0; font-size: 12px; font-weight: 500; color: #666; }
 }
 .preview-box img { max-width: 100%; border-radius: 8px; }
 .status-text { margin-top: 12px; color: #2f6f6a; font-weight: 600; word-break: break-all; }
+.base-banner { margin-bottom: 12px; }
+.base-preview-mini {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+}
+.base-preview-mini img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+}
 </style>
 

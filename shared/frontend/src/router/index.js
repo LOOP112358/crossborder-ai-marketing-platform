@@ -58,6 +58,12 @@ const routes = [
         meta: { title: '我的作品' },
       },
       {
+        path: 'gallery',
+        name: 'Gallery',
+        component: () => import('@/views/GalleryPage.vue'),
+        meta: { title: '作品广场' },
+      },
+      {
         path: 'poster-history',
         redirect: (to) => ({ path: '/my-works', query: { ...to.query, tab: to.query.tab || 'poster' } }),
       },

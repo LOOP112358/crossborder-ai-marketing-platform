@@ -36,6 +36,11 @@ export const useAppStore = defineStore('app', () => {
   /** 当前 posterConfig 对应的商品 id，换品必须清掉旧文案 */
   const posterConfigProductId = ref(null)
 
+  /** 无字底图素材（第3步产物，供第4步叠字） */
+  const basePosterId = ref(null)
+  const basePosterUrl = ref('')
+  const baseTemplateId = ref(null)
+
   const EMPTY_COPY = {
     title: '',
     subtitle: '',
@@ -55,6 +60,22 @@ export const useAppStore = defineStore('app', () => {
       ...EMPTY_COPY,
     }
     posterConfigProductId.value = null
+  }
+
+  function setBasePoster(payload) {
+    if (!payload) {
+      basePosterId.value = null
+      basePosterUrl.value = ''
+      baseTemplateId.value = null
+      return
+    }
+    basePosterId.value = payload.id ?? payload.poster_id ?? null
+    basePosterUrl.value = payload.poster_url || payload.url || ''
+    baseTemplateId.value = payload.template_id ?? posterConfig.value?.templateId ?? null
+  }
+
+  function clearBasePoster() {
+    setBasePoster(null)
   }
 
   function setMatteResult(url, cat, catEn, conf, productId = undefined) {
@@ -150,7 +171,9 @@ export const useAppStore = defineStore('app', () => {
     selectedProductId, selectedProduct, productImageUrl, mattedProductId,
     seedreamBgUrl, enhancedBgUrl, preferredBgUrl, bgStyle,
     posterConfig, posterConfigProductId, campaignHint,
+    basePosterId, basePosterUrl, baseTemplateId,
     setMatteResult, setSelectedProduct, setBackgroundResult, chooseBackground,
     setPosterConfig, clearPosterConfig, isPosterCopyInSync, isPosterConfigForProduct, setCampaignHint,
+    setBasePoster, clearBasePoster,
   }
 })

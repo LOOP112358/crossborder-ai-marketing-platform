@@ -8,7 +8,10 @@
       <div class="head-actions">
         <el-button @click="reload" :loading="loading">刷新</el-button>
         <el-button v-if="mainTab === 'writing'" type="primary" plain @click="$router.push('/writing')">去写文案</el-button>
-        <el-button v-else type="primary" plain @click="$router.push('/poster-workflow?step=poster')">去生成海报</el-button>
+        <template v-else>
+          <el-button plain @click="$router.push('/gallery')">作品广场</el-button>
+          <el-button type="primary" plain @click="$router.push('/poster-workflow?step=poster')">去生成海报</el-button>
+        </template>
       </div>
     </div>
 
@@ -77,7 +80,8 @@
     <div v-show="mainTab === 'poster'">
       <div class="poster-toolbar">
         <el-radio-group v-model="posterMode" size="default" @change="loadPosters">
-          <el-radio-button label="history">全部历史</el-radio-button>
+          <el-radio-button label="final">成稿</el-radio-button>
+          <el-radio-button label="base">底图素材</el-radio-button>
           <el-radio-button label="favorites">我的收藏</el-radio-button>
         </el-radio-group>
         <el-input
@@ -107,24 +111,56 @@
               <div v-else class="thumb-empty">无预览</div>
             </div>
             <div class="card-body">
-              <strong class="card-title">{{ item.title || '未命名海报' }}</strong>
+              <strong class="card-title">{{ item.title || (item.asset_kind === 'base' || posterMode === 'base' ? '无字底图' : '未命名海报') }}</strong>
               <p class="card-meta">
                 {{ item.discount || item.subtitle || '—' }}
                 <span v-if="item.price"> · {{ item.price }}</span>
               </p>
               <p class="card-meta faint">
+                <template v-if="posterMode === 'favorites' && item.username">
+                  @{{ item.username }} ·
+                </template>
+                <el-tag v-if="item.asset_kind === 'base' || posterMode === 'base'" size="small" type="warning" effect="plain">底图</el-tag>
                 下载 {{ item.downloads || 0 }} 次
                 <span v-if="item.created_at"> · {{ formatTime(item.created_at) }}</span>
+              </p>
+              <p v-if="posterMode === 'final'" class="card-meta faint">
+                <el-tag size="small" :type="item.is_public ? 'success' : 'info'" effect="plain">
+                  {{ item.is_public ? '已发布到广场' : '未发布' }}
+                </el-tag>
               </p>
               <div class="card-actions" @click.stop>
                 <el-button size="small" @click="openPreview(item)">预览</el-button>
                 <a :href="downloadUrl(item)" target="_blank" rel="noopener">
                   <el-button size="small" type="primary">下载</el-button>
                 </a>
+                <el-button
+                  v-if="item.asset_kind === 'base' || posterMode === 'base'"
+                  size="small"
+                  type="success"
+                  @click="useBaseForText(item)"
+                >用于加字</el-button>
+                <el-button
+                  v-if="posterMode === 'final'"
+                  size="small"
+                  :type="item.is_public ? 'info' : 'success'"
+                  plain
+                  :loading="publishingId === posterId(item)"
+                  @click="togglePublish(item)"
+                >
+                  {{ item.is_public ? '取消发布' : '发布到广场' }}
+                </el-button>
                 <el-button size="small" type="warning" @click="toggleFav(item)">
                   {{ posterMode === 'favorites' ? '取消收藏' : '收藏' }}
                 </el-button>
-                <el-button size="small" type="danger" plain :loading="deletingPosterId === posterId(item)" @click="removePoster(item)">
+                <el-button
+                  v-if="posterMode !== 'favorites' || item.is_own"
+                  size="small"
+                  type="danger"
+                  plain
+                  :loading="deletingPosterId === posterId(item)"
+                  @click="removePoster(item)"
+                >
                   删除
                 </el-button>
               </div>
@@ -143,7 +179,28 @@
         <a v-if="previewItem" :href="downloadUrl(previewItem)" target="_blank" rel="noopener">
           <el-button type="primary">下载原图</el-button>
         </a>
-        <el-button v-if="previewItem" type="danger" plain @click="removePoster(previewItem)">删除</el-button>
+        <el-button
+          v-if="previewItem && posterMode === 'final'"
+          :type="previewItem.is_public ? 'info' : 'success'"
+          plain
+          :loading="publishingId === posterId(previewItem)"
+          @click="togglePublish(previewItem)"
+        >
+          {{ previewItem.is_public ? '取消发布' : '发布到广场' }}
+        </el-button>
+        <el-button
+          v-if="previewItem && (previewItem.asset_kind === 'base' || posterMode === 'base')"
+          type="success"
+          @click="useBaseForText(previewItem)"
+        >用于加字</el-button>
+        <el-button
+          v-if="previewItem && (posterMode !== 'favorites' || previewItem.is_own)"
+          type="danger"
+          plain
+          @click="removePoster(previewItem)"
+        >
+          删除
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -154,6 +211,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import request from '@/api/request'
 import { getWritingHistory, deleteWritingHistory } from '@/api/writing'
+import { publishPoster, unpublishPoster, getPosterHistory } from '@/api/poster'
 import { useAppStore } from '@/store/useAppStore'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -171,9 +229,10 @@ const writingTotal = ref(0)
 const deletingWritingId = ref(null)
 
 const posters = ref([])
-const posterMode = ref('history')
+const posterMode = ref('final')
 const posterFilter = ref('')
 const deletingPosterId = ref(null)
+const publishingId = ref(null)
 const previewVisible = ref(false)
 const previewItem = ref(null)
 
@@ -203,7 +262,9 @@ const posterEmptyHint = computed(() => {
   if (posters.value.length && posterFilter.value.trim() && !filteredPosters.value.length) {
     return '没有匹配当前筛选的海报'
   }
-  return posterMode.value === 'favorites' ? '暂无收藏海报' : '暂无生成记录'
+  if (posterMode.value === 'favorites') return '暂无收藏海报'
+  if (posterMode.value === 'base') return '暂无底图素材，去工作流第3步生成'
+  return '暂无成稿记录'
 })
 
 function itemKey(item) {
@@ -307,7 +368,8 @@ async function loadPosters() {
     if (posterMode.value === 'favorites') {
       posters.value = (await request.get('/poster/favorites')) || []
     } else {
-      const d = await request.get('/poster/history', { params: { page: 1, page_size: 60 } })
+      const kind = posterMode.value === 'base' ? 'base' : 'final'
+      const d = await getPosterHistory(1, 60, kind)
       posters.value = d?.items || []
     }
   } catch (e) {
@@ -321,13 +383,28 @@ async function loadPosters() {
 async function reload() {
   if (mainTab.value === 'writing') await loadWritings()
   else await loadPosters()
-  // 文案页也预加载海报，便于「相关海报」
+  // 文案页也预加载成稿，便于「相关海报」
   if (mainTab.value === 'writing' && !posters.value.length) {
     try {
-      const d = await request.get('/poster/history', { params: { page: 1, page_size: 60 } })
+      const d = await getPosterHistory(1, 60, 'final')
       posters.value = d?.items || []
     } catch { /* ignore */ }
   }
+}
+
+function useBaseForText(item) {
+  const base = {
+    id: posterId(item),
+    poster_url: item.poster_url,
+    template_id: item.template_id,
+    matted_url: item.matted_url,
+    bg_url: item.bg_url,
+  }
+  appStore.setBasePoster(base)
+  sessionStorage.setItem('poster_base_override', JSON.stringify(base))
+  previewVisible.value = false
+  ElMessage.success('已选择底图，进入加文案')
+  router.push({ path: '/poster-workflow', query: { step: '3' } })
 }
 
 async function copyWriting(item) {
@@ -405,9 +482,34 @@ async function toggleFav(item) {
   if (!pid) return
   try {
     const d = await request.post(`/poster/favorite/${pid}`)
-    ElMessage.success(d?.message || (d?.is_favorite === false ? '已取消收藏' : '已更新收藏'))
+    ElMessage.success(d?.is_favorite === false ? '已取消收藏' : '收藏成功')
     if (posterMode.value === 'favorites') loadPosters()
   } catch { /* handled */ }
+}
+
+async function togglePublish(item) {
+  const pid = posterId(item)
+  if (!pid) return
+  publishingId.value = pid
+  try {
+    if (item.is_public) {
+      await unpublishPoster(pid)
+      item.is_public = false
+      ElMessage.success('已取消发布')
+    } else {
+      const d = await publishPoster(pid)
+      item.is_public = true
+      item.published_at = d?.published_at || item.published_at
+      ElMessage.success('已发布到作品广场')
+    }
+    if (previewItem.value && posterId(previewItem.value) === pid) {
+      previewItem.value.is_public = item.is_public
+    }
+  } catch {
+    /* handled */
+  } finally {
+    publishingId.value = null
+  }
 }
 
 async function removePoster(item) {

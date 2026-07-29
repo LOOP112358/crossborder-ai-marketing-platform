@@ -31,13 +31,17 @@ def init_db():
 
 
 def _ensure_sqlite_columns():
-    """SQLite 无自动迁移：给 abo_products 补 image 相关列。"""
+    """SQLite 无自动迁移：给已有表补新增列。"""
     if not str(engine.url).startswith("sqlite"):
         return
     alters = [
         ("abo_products", "main_image_id", "VARCHAR(64)"),
         ("abo_products", "image_path", "VARCHAR(260)"),
         ("chat_messages", "products_json", "TEXT"),
+        ("history_poster", "is_public", "BOOLEAN DEFAULT 0"),
+        ("history_poster", "published_at", "DATETIME"),
+        ("history_poster", "asset_kind", "VARCHAR(20) DEFAULT 'final'"),
+        ("history_poster", "parent_id", "INTEGER"),
     ]
     with engine.begin() as conn:
         for table, col, coltype in alters:

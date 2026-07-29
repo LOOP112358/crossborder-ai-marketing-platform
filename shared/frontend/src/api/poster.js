@@ -16,8 +16,22 @@ export function composePoster(params) {
   return request.post('/poster/compose', params)
 }
 
-export function getPosterHistory(page = 1, pageSize = 20) {
-  return request.get('/poster/history', { params: { page, page_size: pageSize } })
+export function getPosterHistory(page = 1, pageSize = 20, assetKind = 'final') {
+  return request.get('/poster/history', {
+    params: { page, page_size: pageSize, asset_kind: assetKind },
+  })
+}
+
+export function getPosterGallery(page = 1, pageSize = 20) {
+  return request.get('/poster/gallery', { params: { page, page_size: pageSize } })
+}
+
+export function publishPoster(posterId) {
+  return request.post(`/poster/${posterId}/publish`)
+}
+
+export function unpublishPoster(posterId) {
+  return request.post(`/poster/${posterId}/unpublish`)
 }
 
 export function toggleFavorite(posterId) {
@@ -26,4 +40,8 @@ export function toggleFavorite(posterId) {
 
 export function getFavorites() {
   return request.get('/poster/favorites')
+}
+
+export function deletePosterHistory(posterId) {
+  return request.delete(`/poster/history/${posterId}`)
 }

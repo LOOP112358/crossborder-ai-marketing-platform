@@ -30,6 +30,11 @@ class PosterHistory(Base):
     price = Column(String(50))
     ratio = Column(String(20), default="1:1")
     downloads = Column(Integer, default=0)
+    is_public = Column(Boolean, default=False, index=True)
+    published_at = Column(DateTime, nullable=True)
+    # base=无字底图素材；final=叠字成稿（旧数据视为 final）
+    asset_kind = Column(String(20), default="final", index=True)
+    parent_id = Column(Integer, ForeignKey("history_poster.id"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
 
 

@@ -591,10 +591,10 @@ def text_safe_zone(canvas_w: int, canvas_h: int, template_config: dict) -> dict:
         if cta_side:
             zone.update({
                 "x": pad,
-                "y": int(canvas_h * 0.76),
-                "w": max(200, min(int(canvas_w * 0.55), int(cta_def_x) - pad - 24)),
-                "h": int(canvas_h * 0.22),
-                "cta_y": int(cta_def.get("y") or (canvas_h * 0.86)),
+                "y": int(canvas_h * 0.70),
+                "w": max(200, min(int(canvas_w * 0.58), int(cta_def_x) - pad - 24)),
+                "h": int(canvas_h * 0.26),
+                "cta_y": int(cta_def.get("y") or (canvas_h * 0.84)),
                 "content_max_y": canvas_h - pad - 12,
                 "cta_side": True,
                 "cta_x": int(cta_def_x),
@@ -605,9 +605,9 @@ def text_safe_zone(canvas_w: int, canvas_h: int, template_config: dict) -> dict:
             cta_y = canvas_h - pad - cta_h
             zone.update({
                 "x": pad,
-                "y": int(canvas_h * 0.74),
-                "w": int(canvas_w * 0.70),
-                "h": int(canvas_h * 0.24),
+                "y": int(canvas_h * 0.70),
+                "w": int(canvas_w * 0.78),
+                "h": int(canvas_h * 0.26),
                 "cta_y": cta_y,
                 "content_max_y": cta_y - 16,
                 "on_panel": True,
@@ -825,8 +825,30 @@ def apply_template_overlays(canvas: Image.Image, overlays: list) -> Image.Image:
             card_h = int(h * float(ov.get("height_ratio", 0.55)))
             x0 = int(ov.get("x", int(w * 0.045)))
             y0 = int(ov.get("y", int(h * 0.06)))
-            card = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
-            ImageDraw.Draw(card).rounded_rectangle((0, 0, card_w - 1, card_h - 1), radius=28, fill=color)
+            radius = int(ov.get("radius", 28))
+            card = Image.new("RGBA", (card_w + 10, card_h + 12), (0, 0, 0, 0))
+            cd = ImageDraw.Draw(card)
+            # 轻阴影，让文字底框更像独立图形层
+            if ov.get("shadow", True):
+                cd.rounded_rectangle(
+                    (6, 8, card_w + 5, card_h + 7),
+                    radius=radius,
+                    fill=(0, 0, 0, 45),
+                )
+            outline = ov.get("outline")
+            outline_tuple = None
+            outline_w = int(ov.get("outline_width", 2))
+            if outline:
+                if len(outline) == 3:
+                    outline = list(outline) + [160]
+                outline_tuple = tuple(int(c) for c in outline)
+            cd.rounded_rectangle(
+                (0, 0, card_w - 1, card_h - 1),
+                radius=radius,
+                fill=color,
+                outline=outline_tuple,
+                width=outline_w if outline_tuple else 0,
+            )
             out.alpha_composite(card, (x0, y0))
         elif kind == "vignette":
             vignette = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -863,8 +885,10 @@ def compose_poster(
 ):
     config = template_config
     style_options = style_options or {}
+    skip_text = bool(style_options.get("skip_text"))
+    base_image_url = str(style_options.get("base_image_url") or "").strip()
     sd_refine = bool(style_options.get("sd_refine"))  # 兼容旧字段：开启精修
-    refine_enabled = bool(style_options.get("refine_enabled", sd_refine))
+    refine_enabled = bool(style_options.get("refine_enabled", sd_refine)) and not base_image_url
     refine_engine = str(style_options.get("refine_engine") or "seedream").strip().lower()
     refine_strength = float(style_options.get("sd_refine_strength", 0.28))
     product_hint = str(style_options.get("product_hint") or "")
@@ -873,26 +897,42 @@ def compose_poster(
     canvas_w = config["canvas"]["width"]
     canvas_h = config["canvas"]["height"]
 
-    bg_path = url_to_path(bg_url)
-    product_path = url_to_path(matted_url)
-    if not bg_path.exists():
-        raise FileNotFoundError(f"背景图不存在：{bg_path}")
-    if not product_path.exists():
-        raise FileNotFoundError(f"商品图不存在：{product_path}")
+    # 基于已有无字底图只叠字：跳过商品贴图 / 装饰层 / 精修
+    if base_image_url:
+        base_path = url_to_path(base_image_url)
+        if not base_path.exists():
+            raise FileNotFoundError(f"底图不存在：{base_path}")
+        bg = Image.open(base_path).convert("RGBA")
+        bg = bg.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
+        refine_enabled = False
+    else:
+        bg_path = url_to_path(bg_url)
+        product_path = url_to_path(matted_url)
+        if not bg_path.exists():
+            raise FileNotFoundError(f"背景图不存在：{bg_path}")
+        if not product_path.exists():
+            raise FileNotFoundError(f"商品图不存在：{product_path}")
 
-    bg = Image.open(bg_path).convert("RGBA")
-    bg = bg.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
-    bg = apply_template_overlays(bg, config.get("overlays") or [])
+        bg = Image.open(bg_path).convert("RGBA")
+        bg = bg.resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
+        overlays = list(config.get("overlays") or [])
+        if skip_text:
+            text_overlay_types = {
+                "soft_card", "bottom_band", "top_band", "bottom_fade", "top_fade",
+                "left_panel", "left_fade",
+            }
+            overlays = [ov for ov in overlays if ov.get("type") not in text_overlay_types]
+        bg = apply_template_overlays(bg, overlays)
 
-    product = Image.open(product_path).convert("RGBA")
-    product_cfg = config["product"]
-    product = fit_rgba(product, product_cfg["w"], product_cfg["h"])
-    paste_product_with_shadow(
-        bg, product, product_cfg["x"], product_cfg["y"],
-        shadow=bool(config.get("product_shadow", True)),
-    )
+        product = Image.open(product_path).convert("RGBA")
+        product_cfg = config["product"]
+        product = fit_rgba(product, product_cfg["w"], product_cfg["h"])
+        paste_product_with_shadow(
+            bg, product, product_cfg["x"], product_cfg["y"],
+            shadow=bool(config.get("product_shadow", True)),
+        )
 
-    if refine_enabled:
+    if refine_enabled and not base_image_url:
         try:
             import importlib.util
             repo_root = Path(__file__).resolve().parents[2]
@@ -946,8 +986,19 @@ def compose_poster(
         {"key": "subtitle", "text": discount},
         {"key": "cta_text", "text": price},
     ]
+    if skip_text:
+        for layer in text_layers:
+            layer["text"] = ""
     for layer in text_layers:
         layer["text"] = sanitize_poster_text(layer.get("text") or "")
+
+    # 无字底图：保存商品+背景合成结果后直接返回
+    if skip_text:
+        filename = f"poster_{uuid.uuid4().hex}.png"
+        save_path = POSTER_DIR / filename
+        POSTER_DIR.mkdir(parents=True, exist_ok=True)
+        bg.convert("RGB").save(save_path, quality=95)
+        return f"/static/poster/{filename}"
 
     zone = text_safe_zone(canvas_w, canvas_h, config) if auto_layout else None
     cursor_y = zone["y"] if zone else None

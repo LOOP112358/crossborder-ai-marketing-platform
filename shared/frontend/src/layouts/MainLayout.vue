@@ -29,6 +29,10 @@
           <el-icon><FolderOpened /></el-icon>
           <span>我的作品</span>
         </el-menu-item>
+        <el-menu-item index="/gallery">
+          <el-icon><Picture /></el-icon>
+          <span>作品广场</span>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
           <span>{{ $t('nav.chat') }}</span>
@@ -117,6 +121,7 @@ const currentPageTitle = computed(() => {
     '/writing-poster': '文案·海报工作流',
     '/poster-workflow': 'AI海报工作流',
     '/my-works': '我的作品',
+    '/gallery': '作品广场',
     '/poster-history': '我的作品',
     '/writing-history': '我的作品',
     '/matte': 'AI海报工作流',

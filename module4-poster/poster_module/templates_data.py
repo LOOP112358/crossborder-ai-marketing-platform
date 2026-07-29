@@ -73,6 +73,42 @@ TEMPLATES = [
             },
         },
     },
+    {
+        "id": 6,
+        "name": "极简白底 · Amazon主图风",
+        "preview_url": "/static/poster/templates/template_6.png",
+        "config": {
+            "purpose": "Amazon主图/白底",
+            "layout_mode": "stack",
+            "canvas": {"width": 1080, "height": 1080},
+            "overlays": [
+                {"type": "rect", "x": 0, "y": 0, "w": 1080, "h": 1080, "color": [248, 248, 246, 255]},
+                {
+                    "type": "soft_card",
+                    "ratio": 0.92,
+                    "height_ratio": 0.22,
+                    "x": 42,
+                    "y": 800,
+                    "radius": 24,
+                    "color": [255, 255, 255, 242],
+                    "outline": [30, 30, 30, 55],
+                    "outline_width": 2,
+                    "shadow": True,
+                },
+            ],
+            "product_shadow": False,
+            "product": {"x": 190, "y": 70, "w": 700, "h": 690},
+            "text_defaults": {
+                "title": {"x": 70, "y": 830, "font_size": 52, "color": "#1A1A1A", "art_style": "normal"},
+                "subtitle": {"x": 70, "y": 900, "font_size": 34, "color": "#555555", "art_style": "normal"},
+                "selling_point_1": {"x": 70, "y": 955, "font_size": 26, "color": "#333333", "art_style": "normal"},
+                "cta_text": {
+                    "x": 720, "y": 880, "font_size": 32,
+                    "color": "#FFFFFF", "button_color": "#111111", "art_style": "normal",
+                },
+            },
+        },
+    },
 ]
 
 
