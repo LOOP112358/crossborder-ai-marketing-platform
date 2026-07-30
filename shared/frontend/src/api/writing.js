@@ -4,6 +4,11 @@ export function generateCopywriting(params) {
   return request.post('/writing/generate', params)
 }
 
+/** 智能文案增强：RAG + 多版 + 评分 */
+export function generateEnhancedCopywriting(params) {
+  return request.post('/writing/generate-enhanced', params, { timeout: 120000 })
+}
+
 export function getWritingHistory(page = 1, pageSize = 20) {
   return request.get('/writing/history', { params: { page, page_size: pageSize } })
 }

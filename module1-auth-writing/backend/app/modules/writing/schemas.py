@@ -14,6 +14,16 @@ class GenerateRequest(BaseModel):
     style: str = Field(default="professional", description="文案风格：professional/casual/minimalist/emotional/humorous/luxury")
 
 
+class EnhanceRequest(BaseModel):
+    product_name: str = Field(..., min_length=1, max_length=200)
+    product_features: str = Field("", max_length=800)
+    platforms: List[str] = Field(default=["TikTok"])
+    language: str = Field(default="zh")
+    style: str = Field(default="professional")
+    product_id: Optional[int] = None
+    variant_count: int = Field(default=3, ge=1, le=3)
+
+
 class CopyResult(BaseModel):
     platform: str
     title: str

@@ -81,9 +81,21 @@
             </div>
           </el-form-item>
 
+          <el-form-item label="智能增强">
+            <div class="enhance-row">
+              <el-switch v-model="enhanceMode" active-text="开启" inactive-text="关闭" />
+              <span class="enhance-hint">ABO 检索增强 · 三版对比 · 合规过滤 · 评分排序</span>
+            </div>
+          </el-form-item>
+
           <el-form-item>
             <el-button type="primary" size="large" :loading="generating" block @click="handleGenerate">
-              <el-icon><MagicStick /></el-icon> {{ generating ? $t('writing.generating') : $t('writing.generateBtn') }}
+              <el-icon><MagicStick /></el-icon>
+              {{
+                generating
+                  ? (enhanceMode ? '增强生成中…' : $t('writing.generating'))
+                  : (enhanceMode ? '智能增强生成' : $t('writing.generateBtn'))
+              }}
             </el-button>
             <el-button
               v-if="workflowMode && results.length"
@@ -111,7 +123,67 @@
 
     <!-- 右侧：结果展示 -->
     <div class="result-panel">
-      <div v-if="results.length > 0">
+      <div v-if="enhanceMeta.rag_refs?.length" class="rag-box sketch-card">
+        <div class="rag-title">货盘检索参考（RAG）</div>
+        <div v-for="r in enhanceMeta.rag_refs" :key="r.id || r.name" class="rag-item">
+          <strong>{{ r.brand }} {{ r.name }}</strong>
+          <span>{{ r.product_type }}</span>
+          <p>{{ r.features }}</p>
+        </div>
+        <div v-if="enhanceMeta.pipeline?.length" class="pipeline">
+          流水线：{{ enhanceMeta.pipeline.join(' → ') }}
+        </div>
+      </div>
+
+      <div v-if="enhancedVariants.length > 0" class="variants-wrap">
+        <el-card
+          v-for="item in enhancedVariants"
+          :key="item.rank + item.angle"
+          class="result-card"
+          :class="{ best: item.is_best }"
+          shadow="hover"
+        >
+          <div class="result-header">
+            <el-tag v-if="item.is_best" type="success" size="large">推荐 #{{ item.rank }}</el-tag>
+            <el-tag v-else type="info" size="large">方案 #{{ item.rank }}</el-tag>
+            <el-tag size="small">{{ angleLabel(item.angle) }}</el-tag>
+            <el-tag type="warning" size="small">综合 {{ item.scores?.overall ?? '-' }}</el-tag>
+            <el-button size="small" text type="primary" @click="copyAll(item)">
+              <el-icon><CopyDocument /></el-icon> {{ $t('common.copyAll') }}
+            </el-button>
+            <el-button size="small" type="success" plain @click="selectVariant(item)">选用此版</el-button>
+          </div>
+          <div class="score-row">
+            <span>钩子 {{ item.scores?.hook }}</span>
+            <span>平台 {{ item.scores?.platform_fit }}</span>
+            <span>合规 {{ item.scores?.compliance }}</span>
+            <span>完整 {{ item.scores?.completeness }}</span>
+          </div>
+          <el-alert
+            v-if="item.banned_hits?.length"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin:8px 0"
+            :title="`已弱化风险词：${item.banned_hits.join('、')}`"
+          />
+          <el-divider margin="12px 0" />
+          <div class="result-field">
+            <span class="field-label">{{ $t('writing.resultTitle') }}</span>
+            <p class="field-value title">{{ item.title }}</p>
+          </div>
+          <div class="result-field">
+            <span class="field-label">{{ $t('writing.resultBody') }}</span>
+            <p class="field-value body">{{ item.body }}</p>
+          </div>
+          <div class="result-field">
+            <span class="field-label">{{ $t('writing.resultTags') }}</span>
+            <p class="field-value tags">{{ item.tags }}</p>
+          </div>
+        </el-card>
+      </div>
+
+      <div v-else-if="results.length > 0">
         <el-card v-for="(item, idx) in results" :key="idx" class="result-card" shadow="hover">
           <div class="result-header">
             <el-tag type="primary" size="large">{{ item.platform }}</el-tag>
@@ -143,7 +215,7 @@
       </div>
 
       <!-- 空状态 -->
-      <el-empty v-else description="选择风格 → 输入商品信息 → 点击生成" />
+      <el-empty v-else description="选择风格 → 输入商品信息 → 点击生成（可开智能增强）" />
 
       <!-- 历史记录 -->
       <div class="history-bar" v-if="!workflowMode">
@@ -196,7 +268,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { generateCopywriting, getWritingHistory, searchWritingProducts } from '@/api/writing'
+import { generateCopywriting, generateEnhancedCopywriting, getWritingHistory, searchWritingProducts } from '@/api/writing'
 import { useAppStore } from '@/store/useAppStore'
 import { ElMessage } from 'element-plus'
 
@@ -209,6 +281,9 @@ const { t, locale } = useI18n()
 const appStore = useAppStore()
 const generating = ref(false)
 const results = ref([])
+const enhanceMode = ref(true)
+const enhancedVariants = ref([])
+const enhanceMeta = reactive({ rag_refs: [], pipeline: [] })
 
 const form = reactive({
   product_name: '',
@@ -312,16 +387,51 @@ async function handleGenerate() {
     return
   }
   generating.value = true
+  enhancedVariants.value = []
+  enhanceMeta.rag_refs = []
+  enhanceMeta.pipeline = []
   try {
-    const data = await generateCopywriting(form)
-    results.value = data.results
-    persistWritingResult(results.value[0])
-    ElMessage.success(t('writing.generateSuccess'))
+    if (enhanceMode.value) {
+      const data = await generateEnhancedCopywriting({
+        ...form,
+        product_id: selectedProductId.value || appStore.selectedProductId || null,
+        variant_count: 3,
+      })
+      enhancedVariants.value = data.variants || []
+      enhanceMeta.rag_refs = data.rag_refs || []
+      enhanceMeta.pipeline = data.pipeline || []
+      results.value = data.results || []
+      const best = data.best || results.value[0]
+      persistWritingResult(best)
+      ElMessage.success('智能增强完成：已按综合分排序')
+    } else {
+      const data = await generateCopywriting(form)
+      results.value = data.results
+      persistWritingResult(results.value[0])
+      ElMessage.success(t('writing.generateSuccess'))
+    }
   } catch {
     // handled
   } finally {
     generating.value = false
   }
+}
+
+function angleLabel(angle) {
+  return ({ hook: '钩子版', benefit: '卖点版', social: '种草版' })[angle] || angle
+}
+
+function selectVariant(item) {
+  results.value = [{
+    platform: item.platform,
+    title: item.title,
+    body: item.body,
+    tags: item.tags,
+    language: item.language || form.language,
+    style: item.style || form.style,
+  }]
+  persistWritingResult(results.value[0])
+  ElMessage.success(`已选用「${angleLabel(item.angle)}」`)
 }
 
 function persistWritingResult(item) {
@@ -430,6 +540,23 @@ onMounted(() => {
 .panel-title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .catalog-hint { margin: 6px 0 0; font-size: 12px; color: #909399; line-height: 1.4; }
 .catalog-count { margin: 4px 0 0; font-size: 12px; color: #67a090; }
+.enhance-row { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.enhance-hint { font-size: 12px; color: #909399; line-height: 1.4; }
+.rag-box { padding: 12px 14px; margin-bottom: 12px; }
+.rag-title { font-weight: 700; margin-bottom: 8px; color: #1e5aa8; }
+.rag-item { margin-bottom: 8px; font-size: 12px; line-height: 1.45; }
+.rag-item strong { display: block; color: #243038; }
+.rag-item span { color: #909399; }
+.rag-item p { margin: 2px 0 0; color: #4a5a63; }
+.pipeline { margin-top: 8px; font-size: 11px; color: #67a090; }
+.score-row {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+  font-size: 12px; color: #5a6b7c;
+}
+.result-card.best {
+  border: 2px solid rgba(47, 111, 106, 0.45);
+  box-shadow: 3px 4px 0 rgba(47, 111, 106, 0.12);
+}
 .product-opt { display: flex; flex-direction: row; align-items: center; gap: 8px; line-height: 1.35; max-width: 320px; }
 .product-opt-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; flex-shrink: 0; }
 .product-opt-name { display: block; font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }

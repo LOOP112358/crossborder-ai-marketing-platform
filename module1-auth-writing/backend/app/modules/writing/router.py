@@ -10,8 +10,9 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.writing import WritingHistory
 from app.models.chat import AboProduct
-from app.modules.writing.schemas import GenerateRequest
+from app.modules.writing.schemas import GenerateRequest, EnhanceRequest
 from app.modules.writing.llm_client import get_llm_client
+from app.modules.writing.enhance_service import generate_enhanced_copies
 from app.modules.writing.product_utils import (
     serialize_product,
     build_poster_copy,
@@ -365,6 +366,55 @@ async def generate(req: GenerateRequest,
             "id": history.id,
         },
     }
+
+
+@router.post("/generate-enhanced", response_model=dict)
+async def generate_enhanced(
+    req: EnhanceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """智能文案增强：ABO 检索增强 + 多版生成 + 合规过滤 + 评分排序。"""
+    client = get_llm_client()
+    data = await generate_enhanced_copies(
+        client,
+        db=db,
+        product_name=req.product_name,
+        product_features=req.product_features,
+        platforms=req.platforms or ["TikTok"],
+        language=req.language,
+        style=req.style,
+        product_id=req.product_id,
+        variant_count=req.variant_count,
+    )
+    best = data.get("best") or {}
+    history = WritingHistory(
+        user_id=current_user.id,
+        product_name=req.product_name,
+        product_features=(req.product_features or "")[:500],
+        platform=", ".join(req.platforms or ["TikTok"]),
+        title=best.get("title") or "",
+        body=best.get("body") or "",
+        tags=best.get("tags") or "",
+        language=req.language,
+        style=f"{req.style}+enhanced",
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(history)
+    data["id"] = history.id
+    # 兼容旧前端 results 字段：默认取最优版
+    data["results"] = [
+        {
+            "platform": best.get("platform") or (req.platforms or ["TikTok"])[0],
+            "title": best.get("title") or "",
+            "body": best.get("body") or "",
+            "tags": best.get("tags") or "",
+            "language": req.language,
+            "style": req.style,
+        }
+    ] if best else []
+    return {"code": 200, "message": "智能文案增强完成", "data": data}
 
 
 @router.get("/history", response_model=dict)
